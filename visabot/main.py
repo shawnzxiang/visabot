@@ -23,16 +23,16 @@ def setup_logging() -> None:
     root.addHandler(sh)
 
 
-def check_env() -> list[str]:
+def check_env(needs_ais: bool) -> list[str]:
+    from . import notifier
     missing = []
-    if not config.AIS_EMAIL or "@" not in config.AIS_EMAIL or "example.com" in config.AIS_EMAIL:
-        missing.append("AIS_EMAIL")
-    if not config.AIS_PASSWORD:
-        missing.append("AIS_PASSWORD")
-    if not config.GMAIL_USER:
-        missing.append("GMAIL_USER")
-    if not config.GMAIL_APP_PASSWORD or config.GMAIL_APP_PASSWORD.startswith("xxxx"):
-        missing.append("GMAIL_APP_PASSWORD")
+    if needs_ais:
+        if not config.AIS_EMAIL or "@" not in config.AIS_EMAIL or "example.com" in config.AIS_EMAIL:
+            missing.append("AIS_EMAIL")
+        if not config.AIS_PASSWORD or config.AIS_PASSWORD == "your-ais-password":
+            missing.append("AIS_PASSWORD")
+    if not (notifier._pushover_configured() or notifier._gmail_configured()):
+        missing.append("PUSHOVER_USER_KEY + PUSHOVER_APP_TOKEN")
     return missing
 
 
@@ -62,21 +62,19 @@ def main() -> int:
     g.add_argument("--once", action="store_true", help="one poll cycle, then exit")
     g.add_argument("--recon", action="store_true", help="read-only site walk, saves snapshots")
     g.add_argument("--digest", action="store_true", help="send the daily digest email")
-    g.add_argument("--test-email", action="store_true", help="send a test email and exit")
+    g.add_argument("--test-notify", action="store_true", help="send a test push notification and exit")
+    g.add_argument("--test-email", dest="test_notify", action="store_true",
+                   help=argparse.SUPPRESS)  # legacy alias
     g.add_argument("--simulate", metavar="FIXTURE", help="run detector+decision on a saved payment page, no network")
     args = p.parse_args()
 
     setup_logging()
     log = logging.getLogger("visabot")
 
-    missing = check_env()
     needs_ais = args.poll or args.once or args.recon
-    fatal = [m for m in missing if needs_ais or m.startswith("GMAIL")]
-    if args.simulate:
-        fatal = []
+    fatal = [] if args.simulate else check_env(needs_ais)
     if fatal:
-        print(f"bot/.env is incomplete — fill in: {', '.join(fatal)} "
-              f"(copy .env.example to .env first)", file=sys.stderr)
+        print(f"bot/.env is incomplete — fill in: {', '.join(fatal)}", file=sys.stderr)
         return 2
 
     # Only modes that generate AIS traffic are mutually exclusive; the digest and
@@ -89,9 +87,9 @@ def main() -> int:
     store = Store()
 
     try:
-        if args.test_email:
+        if args.test_notify:
             notifier.send_test(store)
-            print(f"test email sent to {config.ALERT_TO}")
+            print("test push sent — check your phone (Pushover app)")
         elif args.simulate:
             simulate(store, Path(args.simulate))
         elif args.recon:

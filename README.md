@@ -4,21 +4,29 @@ Watches all 7 US consulates in Canada on `ais.usvisa-info.com/en-ca` and auto-bo
 the first H-1B slot inside the window **[today + 5 days → Aug 21, 2026]** (rolling:
 on Aug 5 it accepts Aug 10 onward). Pure HTTP — no browser, no Selenium.
 
-Emails `shawnzxiang@gmail.com`: instant alerts (slot found / booked / problems) and a
-daily 8:00 AM digest that doubles as a watchdog.
+Pushes to your iPhone via **Pushover**: instant alerts (slot found / booked / problems)
+and a daily 8:00 AM digest that doubles as a heartbeat — if the digest doesn't arrive,
+the bot is down. Slot-found and booked alerts use Pushover's *Emergency* priority:
+your phone re-rings every 30 s until you tap Acknowledge, even if the Mac dies.
 
 ## One-time setup
 
-1. **Gmail App Password**: Google Account → Security → 2-Step Verification (must be on)
-   → App passwords → create one for "Mail". Copy the 16 characters.
-2. Run `./setup.sh` — it creates `.env` from the template.
-3. Edit `.env`: put in your **AIS login** (the email/password you use on
-   ais.usvisa-info.com) and the **Gmail app password**. Keep `TEST_MODE=true` for now.
+1. **Pushover** (~5 min, no 2FA anywhere):
+   - iPhone: install **"Pushover Notifications"** from the App Store, create the
+     account in-app (email + password), and **buy the $4.99 unlock immediately** —
+     if the 30-day trial lapses, delivery fails *silently*.
+   - Browser: log in at [pushover.net](https://pushover.net) → copy the 30-char
+     **User Key** (top of dashboard) → "Create an Application/API Token" (name it
+     `h1b-watcher`) → copy the **API Token**.
+   - iPhone Settings → Notifications → Pushover → enable **Critical Alerts** and
+     **Time Sensitive** so Focus/Do-Not-Disturb can't swallow an emergency alert.
+2. Edit `.env`: your **AIS login** (the email/password for ais.usvisa-info.com) and
+   the two **Pushover keys**. Keep `TEST_MODE=true` for now.
 
 ## Rollout (in order)
 
 ```bash
-.venv/bin/python -m visabot.main --test-email   # 1. email plumbing works?
+.venv/bin/python -m visabot.main --test-notify  # 1. push plumbing works? (check phone)
 .venv/bin/python -m visabot.main --recon        # 2. read-only site walk, saves recon/*.html
 .venv/bin/python -m visabot.main --once         # 3. one real poll, check output + DB
 ```
@@ -48,16 +56,17 @@ are, flip to live as soon as `--recon`/`--once` look right.
 
 ## Day-to-day
 
-- Daily digest at 8:00 AM: mode, budget use, per-post availability history, errors.
-  Subject shows **⚠ POLLER STALE** if the poller has been silent >2 h.
+- Daily digest push at 8:00 AM: mode, budget use, per-post availability history,
+  errors. Title shows **⚠ POLLER STALE** if the poller has been silent >2 h.
+  Long digests arrive split into 2–3 numbered messages (Pushover's 1024-char cap).
 - On a booked slot the bot verifies it actually landed (the portal is known to
-  produce phantom "successes"), emails **BOOKED & VERIFIED**, then stops polling.
-  If it books a non-Calgary post, the email reminds you to file a new DS-160 for
-  that post (your current DS-160 names Calgary).
+  produce phantom "successes"), sends **BOOKED & VERIFIED** (emergency priority),
+  then stops polling. If it books a non-Calgary post, the message reminds you to
+  file a new DS-160 for that post (your current DS-160 names Calgary).
 - Soft-ban protection: max 40 requests/day on a jittered duty cycle (20 min evenings,
   60 min daytime, 180 min overnight). If the site soft-bans anyway, the bot backs
   off 8 h and tells you.
-- If a captcha ever appears, the bot stops and emails you — log in manually once in
+- If a captcha ever appears, the bot stops and notifies you — log in manually once in
   a normal browser, which usually clears it. It never attempts to bypass captchas.
 
 ## Controls

@@ -56,7 +56,7 @@ def run_burst(client: AisClient, store: Store, post: str, cand_date) -> None:
         f"The bot is attempting to book it RIGHT NOW.\n\n"
         f"If you want to try manually as backup: {SIGN_IN_URL}\n"
         f"(TEST_MODE={'ON — no booking will be submitted' if config.TEST_MODE else 'off'})",
-        urgent=True,
+        emergency=True,
     )
     _pace()
     res = confirmer.confirm(client, post)
@@ -75,7 +75,7 @@ def run_burst(client: AisClient, store: Store, post: str, cand_date) -> None:
             f"on {date_str} at {time_str}.\n\nEvidence: {payload}\n\n"
             "If this looks right, set TEST_MODE=false in bot/.env and restart the poller:\n"
             "  launchctl kickstart -k gui/$(id -u)/com.shawn.visabot.poller",
-            urgent=True,
+            emergency=True,
         )
         return
 
@@ -99,7 +99,8 @@ def run_burst(client: AisClient, store: Store, post: str, cand_date) -> None:
             "   launchctl bootout gui/$(id -u)/com.shawn.visabot.poller\n"
             "   launchctl bootout gui/$(id -u)/com.shawn.visabot.digest\n"
         )
-        notifier.send_alert(store, f"BOOKED & VERIFIED: {post} {date_str} {time_str}", body, urgent=True)
+        notifier.send_alert(store, f"BOOKED & VERIFIED: {post} {date_str} {time_str}", body,
+                            emergency=True)
     else:
         notifier.send_alert(
             store, f"BOOKING FAILED at {post} {date_str} — still polling",
@@ -107,7 +108,7 @@ def run_burst(client: AisClient, store: Store, post: str, cand_date) -> None:
             f"Attempts today: {store.attempts_today()}/{config.MAX_BOOK_ATTEMPTS_PER_DAY}, "
             f"total: {store.attempts_total()}/{config.MAX_BOOK_ATTEMPTS_TOTAL}.\n"
             "Polling continues.",
-            urgent=True,
+            emergency=True,
         )
 
 

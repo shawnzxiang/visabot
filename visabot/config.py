@@ -28,6 +28,12 @@ POST_PRIORITY = ["Calgary", "Vancouver", "Toronto", "Ottawa", "Montreal", "Quebe
 
 AIS_EMAIL = os.environ.get("AIS_EMAIL", "")
 AIS_PASSWORD = os.environ.get("AIS_PASSWORD", "")
+
+# Primary notification channel: Pushover (https://pushover.net)
+PUSHOVER_USER_KEY = os.environ.get("PUSHOVER_USER_KEY", "")
+PUSHOVER_APP_TOKEN = os.environ.get("PUSHOVER_APP_TOKEN", "")
+
+# Optional legacy secondary channel (only used if a real app password is set)
 GMAIL_USER = os.environ.get("GMAIL_USER", "")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")
 ALERT_TO = os.environ.get("ALERT_TO", GMAIL_USER)

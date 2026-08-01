@@ -92,4 +92,5 @@ def build(store: Store) -> tuple[str, str]:
 
 def run(store: Store) -> None:
     subject, body = build(store)
-    notifier.send_alert(store, subject, body, urgent=True)
+    # The digest is the daily heartbeat: quiet priority normally, loud when stale.
+    notifier.send_alert(store, subject, body, urgent="STALE" in subject)
