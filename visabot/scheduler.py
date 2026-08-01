@@ -31,40 +31,54 @@ def _pace() -> None:
     time.sleep(random.uniform(2.0, 5.0))
 
 
-def poll_once(client: AisClient, store: Store) -> None:
-    client.ensure_session()
-    html = client.get_payment_page()
-    avail = detector.parse_payment_page(html)
-    if not avail:
-        path = client.save_debug("payment_unparseable", html)
-        raise NeedsRecon(f"payment page had no recognizable posts; saved {path}")
-    store.record_availability(avail)
+def check_post(client: AisClient, store: Store, post: str) -> list:
+    """One days.json read for one consulate. Records history, returns parsed dates."""
+    dates = detector.parse_days(client.get_days(config.FACILITIES[post]))
+    store.record_availability({post: min(dates) if dates else None})
     store.kv_set("last_poll_ts", datetime.now().isoformat(timespec="seconds"))
+    log.info("%s: %d dates%s", post, len(dates),
+             f", earliest {min(dates)}" if dates else " (nothing available)")
+    return dates
 
-    seen = {p: d.isoformat() for p, d in avail.items() if d}
-    log.info("poll ok — dates seen: %s", seen or "none")
 
-    cand = detector.pick_candidate(avail)
+def poll_once(client: AisClient, store: Store) -> None:
+    """One rotation step: check the next consulate in the round-robin."""
+    client.ensure_session()
+    post = detector.next_post(store)
+    dates = check_post(client, store, post)
+    cand = detector.earliest_in_window(dates)
     if cand:
-        run_burst(client, store, *cand)
+        run_burst(client, store, post, cand)
+
+
+def sweep(client: AisClient, store: Store) -> dict:
+    """Check ALL 7 posts once (7 requests). Used by --sweep, not by the poller."""
+    client.ensure_session()
+    out = {}
+    for i, post in enumerate(config.POST_PRIORITY):
+        if i:
+            _pace()
+        dates = check_post(client, store, post)
+        out[post] = min(dates) if dates else None
+    return out
 
 
 def run_burst(client: AisClient, store: Store, post: str, cand_date) -> None:
     notifier.send_alert(
         store, f"SLOT FOUND: {post} {cand_date} — booking now",
-        f"The payment page shows {cand_date} at {post}, inside your window "
+        f"{post} is showing {cand_date}, inside your window "
         f"{config.window()[0]} .. {config.window()[1]}.\n"
         f"The bot is attempting to book it RIGHT NOW.\n\n"
         f"If you want to try manually as backup: {SIGN_IN_URL}\n"
         f"(TEST_MODE={'ON — no booking will be submitted' if config.TEST_MODE else 'off'})",
         emergency=True,
     )
+    date_str = cand_date.isoformat()
     _pace()
-    res = confirmer.confirm(client, post)
-    if res is None:
-        store.event("info", "sniped", f"{post} {cand_date}: gone or out of window at days/times check")
+    time_str = confirmer.pick_time(client, post, date_str)
+    if time_str is None:
+        store.event("info", "sniped", f"{post} {date_str}: no times left")
         return
-    date_str, time_str = res
     _pace()
     outcome, payload = booker.book(client, store, post, date_str, time_str)
 

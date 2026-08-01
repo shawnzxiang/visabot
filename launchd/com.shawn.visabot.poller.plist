@@ -6,13 +6,13 @@
     <string>com.shawn.visabot.poller</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/shawn/Documents/h1b2026appointment/bot/.venv/bin/python</string>
+        <string>/Users/shawn/visabot/.venv/bin/python</string>
         <string>-m</string>
         <string>visabot.main</string>
         <string>--poll</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/shawn/Documents/h1b2026appointment/bot</string>
+    <string>/Users/shawn/visabot</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -20,8 +20,8 @@
     <key>ThrottleInterval</key>
     <integer>120</integer>
     <key>StandardOutPath</key>
-    <string>/Users/shawn/Documents/h1b2026appointment/bot/logs/launchd-poller.log</string>
+    <string>/Users/shawn/visabot/logs/launchd-poller.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/shawn/Documents/h1b2026appointment/bot/logs/launchd-poller.log</string>
+    <string>/Users/shawn/visabot/logs/launchd-poller.log</string>
 </dict>
 </plist>

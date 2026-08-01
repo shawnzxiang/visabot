@@ -1,5 +1,6 @@
 """Entry point: python -m visabot.main [--poll|--once|--recon|--digest|--test-email|--simulate F]."""
 import argparse
+import json
 import logging
 import sys
 import traceback
@@ -38,21 +39,20 @@ def check_env(needs_ais: bool) -> list[str]:
 
 
 def simulate(store: Store, fixture: Path) -> None:
-    html = fixture.read_text()
-    avail = detector.parse_payment_page(html)
-    print("parsed availability:")
-    for post, d in sorted(avail.items()):
-        print(f"  {post:<12} {d or 'no appointments'}")
+    """Feed a saved days.json response through the decision logic. No network."""
+    payload = json.loads(fixture.read_text())
+    dates = detector.parse_days([item["date"] for item in payload])
     lo, hi = config.window()
+    print(f"days.json had {len(dates)} dates: {[d.isoformat() for d in dates][:8]}")
     print(f"window: {lo} .. {hi}")
-    cand = detector.pick_candidate(avail)
+    cand = detector.earliest_in_window(dates)
     if not cand:
-        print("no candidate in window -> the poller would keep polling.")
+        print("nothing in window -> the poller would move to the next consulate.")
         return
-    post, d = cand
-    print(f"CANDIDATE: {post} {d}")
-    print("the poller would now: email SLOT FOUND -> days.json -> times.json -> "
-          f"POST facility_id={config.FACILITIES[post]} date={d} time=<first available> "
+    post = "Toronto"  # illustrative; the real post comes from the rotation
+    print(f"CANDIDATE: {cand}")
+    print(f"the poller would now: push SLOT FOUND -> times.json -> "
+          f"POST facility_id={config.FACILITIES[post]} date={cand} time=<first available> "
           f"(TEST_MODE={'ON, stops before POST' if config.TEST_MODE else 'OFF — would submit'})")
 
 
@@ -60,7 +60,9 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="visabot")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--poll", action="store_true", help="run the polling daemon (launchd entry)")
-    g.add_argument("--once", action="store_true", help="one poll cycle, then exit")
+    g.add_argument("--once", action="store_true", help="one rotation step (1 consulate), then exit")
+    g.add_argument("--sweep", action="store_true",
+                   help="check all 7 consulates once and print earliest dates (7 requests)")
     g.add_argument("--recon", action="store_true", help="read-only site walk, saves snapshots")
     g.add_argument("--digest", action="store_true", help="send the daily digest email")
     g.add_argument("--test-notify", action="store_true", help="send a test push notification and exit")
@@ -72,7 +74,7 @@ def main() -> int:
     setup_logging()
     log = logging.getLogger("visabot")
 
-    needs_ais = args.poll or args.once or args.recon
+    needs_ais = args.poll or args.once or args.recon or args.sweep
     fatal = [] if args.simulate else check_env(needs_ais)
     if fatal:
         print(f"bot/.env is incomplete — fill in: {', '.join(fatal)}", file=sys.stderr)
@@ -96,10 +98,20 @@ def main() -> int:
         elif args.recon:
             recon.run(store)
         elif args.once:
-            from .client import AisClient
-            client = AisClient(store)
+            client = client_mod.AisClient(store)
             scheduler.poll_once(client, store)
             print(f"poll ok. budget used today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}")
+        elif args.sweep:
+            client = client_mod.AisClient(store)
+            avail = scheduler.sweep(client, store)
+            lo, hi = config.window()
+            print(f"\nEarliest available appointment per consulate "
+                  f"(window {lo} .. {hi}):\n")
+            for post in config.POST_PRIORITY:
+                d = avail.get(post)
+                mark = "  <-- IN WINDOW" if d and config.in_window(d) else ""
+                print(f"  {post:<12} {d.isoformat() if d else 'none available'}{mark}")
+            print(f"\nbudget used today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}")
         elif args.digest:
             digest.run(store)
             print("digest sent")

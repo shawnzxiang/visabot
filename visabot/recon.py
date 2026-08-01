@@ -4,15 +4,12 @@ Submits nothing except the sign-in form. Costs ~6 budget requests.
 Run before going live; review the saved HTML in bot/recon/ and the printed summary.
 """
 import re
-import shutil
 
 from bs4 import BeautifulSoup
 
-from . import config, detector
+from . import config
 from .client import AisClient
 from .store import Store
-
-FIXTURES = config.BOT_DIR / "tests" / "fixtures"
 
 
 def run(store: Store) -> None:
@@ -42,23 +39,12 @@ def run(store: Store) -> None:
     else:
         print(f"   !! no facility <select> found — inspect {appt_path}")
 
-    print("4. payment page (the poll target) ...")
-    pay = client.get_payment_page()
-    pay_path = client.save_debug("recon_payment", pay)
-    FIXTURES.mkdir(parents=True, exist_ok=True)
-    shutil.copy(pay_path, FIXTURES / "payment_page_real.html")
-    avail = detector.parse_payment_page(pay)
-    if avail:
-        print("   parsed availability:")
-        for post, d in sorted(avail.items()):
-            print(f"     {post:<12} {d or 'no appointments'}")
-        print(f"   (copied to {FIXTURES/'payment_page_real.html'} for the test suite)")
-    else:
-        print(f"   !! parser found NO posts — inspect {pay_path} and fix detector.py")
-
-    print("5. days.json for Calgary (1 request) ...")
+    print("4. days.json for Calgary (1 request) ...")
     days = client.get_days(config.FACILITIES["Calgary"])
-    print(f"   {len(days)} available dates" + (f", earliest {days[0]}" if days else " (empty — expected while nothing is bookable)"))
+    print(f"   {len(days)} available dates" +
+          (f", earliest {days[0]}" if days else " (empty — nothing bookable there)"))
+    print("   (note: /payment 302s to /appointment for an unbooked account, so there is\n"
+          "    no all-consulates table — the poller round-robins days.json per post.)")
 
     print(f"\nDone. Budget used today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}")
     print("Review the recon/*.html snapshots, then proceed with --once and go-live.")

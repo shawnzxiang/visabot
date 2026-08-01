@@ -6,13 +6,13 @@
     <string>com.shawn.visabot.digest</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/shawn/Documents/h1b2026appointment/bot/.venv/bin/python</string>
+        <string>/Users/shawn/visabot/.venv/bin/python</string>
         <string>-m</string>
         <string>visabot.main</string>
         <string>--digest</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>/Users/shawn/Documents/h1b2026appointment/bot</string>
+    <string>/Users/shawn/visabot</string>
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
@@ -21,8 +21,8 @@
         <integer>0</integer>
     </dict>
     <key>StandardOutPath</key>
-    <string>/Users/shawn/Documents/h1b2026appointment/bot/logs/launchd-digest.log</string>
+    <string>/Users/shawn/visabot/logs/launchd-digest.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/shawn/Documents/h1b2026appointment/bot/logs/launchd-digest.log</string>
+    <string>/Users/shawn/visabot/logs/launchd-digest.log</string>
 </dict>
 </plist>

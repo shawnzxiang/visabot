@@ -183,15 +183,6 @@ class AisClient:
 
     # --- reads ---
 
-    def get_payment_page(self) -> str:
-        resp = self._request(
-            "payment", "GET",
-            f"{config.BASE}/schedule/{self.schedule_id}/payment",
-            allow_redirects=True,
-        )
-        self._check_signed_in(resp)
-        return resp.text
-
     def _json_headers(self) -> dict:
         return {
             "Accept": "application/json, text/javascript, */*; q=0.01",

@@ -1,6 +1,5 @@
-"""Burst confirmation: days.json is authoritative; detect the soft-ban contradiction."""
+"""Second half of a booking burst: turn a candidate date into a bookable time slot."""
 import logging
-from datetime import date
 
 from . import config
 from .client import AisClient
@@ -9,27 +8,17 @@ log = logging.getLogger(__name__)
 
 
 class SoftBanSuspected(Exception):
-    """days.json came back empty seconds after the payment page showed a date."""
+    """Reserved for responses that look like the silent rate-limit rather than
+    genuine emptiness. days.json is now our only availability signal, so an empty
+    list is indistinguishable from 'no slots' — the request budget is the real
+    defense, not this exception."""
 
 
-def confirm(client: AisClient, post: str, today: date | None = None) -> tuple[str, str] | None:
-    """-> (date_str, time_str) ready to book, or None if the slot is gone/out of window."""
-    facility_id = config.FACILITIES[post]
-    days = client.get_days(facility_id)
-    if not days:
-        # The payment page just advertised a date for this post; an empty list here is
-        # the documented soft-ban signature, not "no availability".
-        raise SoftBanSuspected(f"days.json empty for {post} right after payment page showed a date")
-
-    in_window = sorted(d for d in days if config.in_window(date.fromisoformat(d), today))
-    if not in_window:
-        log.info("%s: days.json has %d dates but none in window (earliest %s)",
-                 post, len(days), min(days))
-        return None
-
-    date_str = in_window[0]
-    times = client.get_times(facility_id, date_str)
+def pick_time(client: AisClient, post: str, date_str: str) -> str | None:
+    """-> a bookable time on date_str at post, or None if the slot is already gone."""
+    times = client.get_times(config.FACILITIES[post], date_str)
     if not times:
-        log.info("%s %s: no times left (sniped)", post, date_str)
+        log.info("%s %s: no times returned (slot taken between our two requests)",
+                 post, date_str)
         return None
-    return date_str, times[0]
+    return times[0]

@@ -9,6 +9,33 @@ and a daily 8:00 AM digest that doubles as a heartbeat — if the digest doesn't
 the bot is down. Slot-found and booked alerts use Pushover's *Emergency* priority:
 your phone re-rings every 30 s until you tap Acknowledge, even if the Mac dies.
 
+## How it polls
+
+AIS has **no** "earliest date at every consulate" endpoint for an account that has
+paid but not yet booked — `/schedule/{id}/payment` just redirects to the booking
+form. Availability can only be read one consulate at a time from
+`days/{facility_id}.json`, so the poller **round-robins** through the 7 posts, one
+request per cycle, and the rotation position survives restarts.
+
+Cadence (jittered ±20% so the pattern isn't machine-regular):
+
+| Hours (local) | A consulate is checked every | Why |
+|---|---|---|
+| 17:00–01:00 | 20 min | slot drops cluster evening/late-night ET |
+| 07:00–17:00 | 60 min | daytime |
+| 01:00–07:00 | 3 h | overnight |
+
+That's ~36 checks/day against a hard cap of **40 requests/day** (`DAILY_REQUEST_BUDGET`
+in `visabot/config.py`), i.e. **each individual consulate is checked about every
+4–5 hours**. The cap exists because AIS silently soft-bans at roughly 50–110
+requests/day — and since `days.json` is now the only availability signal, an empty
+response is indistinguishable from a ban. **The budget is the entire defense**, so
+raise it only deliberately: 60/day → each post every ~3 h, at real ban risk.
+
+⚠️ **This bot must not live in `~/Documents`, `~/Desktop`, or `~/Downloads`.** macOS
+TCC blocks launchd background agents from reading those folders — the process hangs
+during Python startup with no error anywhere. That's why it lives in `~/visabot`.
+
 ## One-time setup
 
 1. **Pushover** (~5 min, no 2FA anywhere):

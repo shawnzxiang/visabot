@@ -1,52 +1,44 @@
 from datetime import date
-from pathlib import Path
 
-from visabot import detector
-
-FIXTURES = Path(__file__).parent / "fixtures"
+from visabot import config, detector
+from visabot.store import Store
 
 
-def load(name):
-    return (FIXTURES / name).read_text()
+def test_parse_days_skips_garbage():
+    assert detector.parse_days(["2026-08-12", "not-a-date", "2026-08-05"]) == [
+        date(2026, 8, 5), date(2026, 8, 12)
+    ]
 
 
-def test_parse_synthetic_payment_page():
-    avail = detector.parse_payment_page(load("payment_synthetic.html"))
-    assert avail["Calgary"] == date(2026, 8, 15)
-    assert avail["Halifax"] is None
-    assert avail["Montreal"] == date(2026, 11, 22)
-    assert avail["Ottawa"] is None
-    assert avail["Quebec City"] == date(2026, 8, 15)
-    assert avail["Toronto"] == date(2026, 9, 3)
-    assert avail["Vancouver"] == date(2026, 8, 10)
+def test_earliest_in_window_picks_first_eligible():
+    dates = [date(2026, 8, 3), date(2026, 8, 12), date(2026, 8, 19)]
+    # window on 2026-08-01 is [08-06 .. 08-21]; 08-03 is too soon
+    assert detector.earliest_in_window(dates, date(2026, 8, 1)) == date(2026, 8, 12)
 
 
-def test_pick_earliest_in_window():
-    avail = detector.parse_payment_page(load("payment_synthetic.html"))
-    # window on 2026-07-31 is [08-05 .. 08-21]: Vancouver 08-10 beats the 08-15 pair
-    assert detector.pick_candidate(avail, date(2026, 7, 31)) == ("Vancouver", date(2026, 8, 10))
+def test_earliest_in_window_rejects_too_late():
+    assert detector.earliest_in_window([date(2026, 9, 3)], date(2026, 8, 1)) is None
 
 
-def test_priority_breaks_ties():
-    avail = {"Quebec City": date(2026, 8, 15), "Calgary": date(2026, 8, 15)}
-    assert detector.pick_candidate(avail, date(2026, 7, 31)) == ("Calgary", date(2026, 8, 15))
+def test_earliest_in_window_respects_rolling_start():
+    dates = [date(2026, 8, 12)]
+    assert detector.earliest_in_window(dates, date(2026, 8, 1)) == date(2026, 8, 12)
+    # by Aug 8 the window starts Aug 13, so the same date no longer qualifies
+    assert detector.earliest_in_window(dates, date(2026, 8, 8)) is None
 
 
-def test_no_candidate_when_all_late_or_empty():
-    avail = {"Toronto": date(2026, 9, 3), "Halifax": None}
-    assert detector.pick_candidate(avail, date(2026, 7, 31)) is None
+def test_rotation_cycles_all_posts_then_wraps(tmp_path):
+    s = Store(tmp_path / "rot.db")
+    seen = [detector.next_post(s) for _ in range(len(config.POST_PRIORITY))]
+    assert seen == config.POST_PRIORITY          # every post covered exactly once
+    assert detector.next_post(s) == config.POST_PRIORITY[0]   # wraps around
 
 
-def test_rolling_window_excludes_too_soon():
-    # On Aug 8, window starts Aug 13 — Vancouver's Aug 10 no longer qualifies
-    avail = detector.parse_payment_page(load("payment_synthetic.html"))
-    assert detector.pick_candidate(avail, date(2026, 8, 8)) == ("Calgary", date(2026, 8, 15))
-
-
-def test_date_formats():
-    assert detector.parse_date_cell("15 August, 2026") == date(2026, 8, 15)
-    assert detector.parse_date_cell("15 August 2026") == date(2026, 8, 15)
-    assert detector.parse_date_cell("August 15, 2026") == date(2026, 8, 15)
-    assert detector.parse_date_cell("2026-08-15") == date(2026, 8, 15)
-    assert detector.parse_date_cell("No Appointments Available") is None
-    assert detector.parse_date_cell("") is None
+def test_rotation_survives_restart(tmp_path):
+    db = tmp_path / "rot2.db"
+    s1 = Store(db)
+    detector.next_post(s1)
+    first_after = detector.next_post(s1)
+    s2 = Store(db)  # simulate a restart
+    assert detector.next_post(s2) == config.POST_PRIORITY[2]
+    assert first_after == config.POST_PRIORITY[1]
