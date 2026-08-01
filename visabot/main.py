@@ -100,18 +100,18 @@ def main() -> int:
         elif args.once:
             client = client_mod.AisClient(store)
             scheduler.poll_once(client, store)
-            print(f"poll ok. budget used today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}")
+            print(f"poll ok. budget used today: {store.requests_today()}/{config.DAILY_RUNAWAY_GUARD}")
         elif args.sweep:
             client = client_mod.AisClient(store)
             avail = scheduler.sweep(client, store)
             lo, hi = config.window()
             print(f"\nEarliest available appointment per consulate "
                   f"(window {lo} .. {hi}):\n")
-            for post in config.POST_PRIORITY:
+            for post in config.ROTATION:
                 d = avail.get(post)
                 mark = "  <-- IN WINDOW" if d and config.in_window(d) else ""
                 print(f"  {post:<12} {d.isoformat() if d else 'none available'}{mark}")
-            print(f"\nbudget used today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}")
+            print(f"\nbudget used today: {store.requests_today()}/{config.DAILY_RUNAWAY_GUARD}")
         elif args.digest:
             digest.run(store)
             print("digest sent")

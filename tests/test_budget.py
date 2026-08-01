@@ -17,7 +17,7 @@ def test_budget_counts_only_today(tmp_path):
     s.record_request("payment")
     s.record_request("days")
     assert s.requests_today() == 2
-    assert s.budget_remaining() == config.DAILY_REQUEST_BUDGET - 2
+    assert s.budget_remaining() == config.DAILY_RUNAWAY_GUARD - 2
 
 
 def test_attempt_caps_exclude_test_mode(tmp_path):

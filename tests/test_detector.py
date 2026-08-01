@@ -29,9 +29,9 @@ def test_earliest_in_window_respects_rolling_start():
 
 def test_rotation_cycles_all_posts_then_wraps(tmp_path):
     s = Store(tmp_path / "rot.db")
-    seen = [detector.next_post(s) for _ in range(len(config.POST_PRIORITY))]
-    assert seen == config.POST_PRIORITY          # every post covered exactly once
-    assert detector.next_post(s) == config.POST_PRIORITY[0]   # wraps around
+    seen = [detector.next_post(s) for _ in range(len(config.ROTATION))]
+    assert seen == config.ROTATION          # every post covered exactly once
+    assert detector.next_post(s) == config.ROTATION[0]   # wraps around
 
 
 def test_rotation_survives_restart(tmp_path):
@@ -40,5 +40,5 @@ def test_rotation_survives_restart(tmp_path):
     detector.next_post(s1)
     first_after = detector.next_post(s1)
     s2 = Store(db)  # simulate a restart
-    assert detector.next_post(s2) == config.POST_PRIORITY[2]
-    assert first_after == config.POST_PRIORITY[1]
+    assert detector.next_post(s2) == config.ROTATION[2]
+    assert first_after == config.ROTATION[1]

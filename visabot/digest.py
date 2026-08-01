@@ -41,7 +41,7 @@ def build(store: Store) -> tuple[str, str]:
         f"Mode: {mode}",
         f"Window: {lo} .. {hi} (rolling today+{config.EARLIEST_OFFSET_DAYS})",
         f"Last successful poll: {last_poll or 'never'}" + ("  ← STALE (>2h)" if stale else ""),
-        f"Requests today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}",
+        f"Requests today: {store.requests_today()}/{config.DAILY_RUNAWAY_GUARD}",
         f"TEST_MODE: {'ON' if config.TEST_MODE else 'off'}",
         "",
     ]
@@ -57,7 +57,7 @@ def build(store: Store) -> tuple[str, str]:
     for ts, post, d in rows:
         by_post.setdefault(post, []).append(d)
     if by_post:
-        for post in config.POST_PRIORITY:
+        for post in config.ROTATION:
             if post in by_post:
                 seen = [d for d in by_post[post] if d]
                 lines.append(f"  {post:<12} {min(seen) if seen else '—'}  "

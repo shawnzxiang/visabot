@@ -17,20 +17,34 @@ form. Availability can only be read one consulate at a time from
 `days/{facility_id}.json`, so the poller **round-robins** through the 7 posts, one
 request per cycle, and the rotation position survives restarts.
 
-Cadence (jittered ±20% so the pattern isn't machine-regular):
+**Cadence: one consulate every 5–9 minutes** (300 s + 0–240 s jitter), doubled
+overnight (01:00–06:00). That's ~150–180 checks/day, so **each consulate is checked
+roughly every 45–70 minutes**. These are the values an actively-maintained Canada
+fork (`sunjogthind/usvisa-ca-script`) converged on after weeks of real use. There is
+no daily quota; `DAILY_RUNAWAY_GUARD = 400` is only a bug-stop.
 
-| Hours (local) | A consulate is checked every | Why |
-|---|---|---|
-| 17:00–01:00 | 20 min | slot drops cluster evening/late-night ET |
-| 07:00–17:00 | 60 min | daytime |
-| 01:00–07:00 | 3 h | overnight |
+**Soft-ban handling.** AIS rate-limits by *cumulative request count per account*
+(~50–110 requests within a few hours) and answers with HTTP 200 and an empty array —
+byte-identical to "no appointments." It is keyed to the account, so a new session,
+a re-login, or a different IP does **not** clear it; only time does (~5 h typical,
+range 3–24 h).
 
-That's ~36 checks/day against a hard cap of **40 requests/day** (`DAILY_REQUEST_BUDGET`
-in `visabot/config.py`), i.e. **each individual consulate is checked about every
-4–5 hours**. The cap exists because AIS silently soft-bans at roughly 50–110
-requests/day — and since `days.json` is now the only availability signal, an empty
-response is indistinguishable from a ban. **The budget is the entire defense**, so
-raise it only deliberately: 60/day → each post every ~3 h, at real ban risk.
+The bot tells a ban from genuine emptiness with a **canary**: Vancouver, Ottawa and
+Toronto normally return 139/123/24 open dates, so if one of them returns zero we are
+banned — a calendar holding 100+ days cannot empty between two polls. Calgary,
+Montreal, Quebec City and Halifax are empty all the time and are never used as
+canaries. The canaries sit in the normal rotation (which interleaves them with the
+empty posts), so detection costs no extra requests. On detection the bot backs off
+30 min → 1 h → 2 h → 4 h → 5 h, probing at each step, and resets to full speed the
+moment any consulate returns dates again.
+
+⚠️ **AIS prohibits automated access.** Its Terms of Use, its FAQ, and a notice linked
+from the sign-in page all say so, and the stated remedy is account suspension or
+termination. The FAQ adds that "repeatedly refreshing a page inside the system over
+an extended period of time can lead to the deactivation of your account." No numeric
+limit is published anywhere. Running this tool accepts that risk on your own account.
+The bot will not solve CAPTCHAs, rotate user-agents, or use proxies to evade
+detection — when the site says stop, it stops.
 
 ⚠️ **This bot must not live in `~/Documents`, `~/Desktop`, or `~/Downloads`.** macOS
 TCC blocks launchd background agents from reading those folders — the process hangs

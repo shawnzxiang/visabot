@@ -46,5 +46,5 @@ def run(store: Store) -> None:
     print("   (note: /payment 302s to /appointment for an unbooked account, so there is\n"
           "    no all-consulates table — the poller round-robins days.json per post.)")
 
-    print(f"\nDone. Budget used today: {store.requests_today()}/{config.DAILY_REQUEST_BUDGET}")
+    print(f"\nDone. Budget used today: {store.requests_today()}/{config.DAILY_RUNAWAY_GUARD}")
     print("Review the recon/*.html snapshots, then proceed with --once and go-live.")
