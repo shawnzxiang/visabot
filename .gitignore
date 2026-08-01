@@ -3,6 +3,7 @@
 state/
 logs/
 recon/
+tests/fixtures/*_real.html
 __pycache__/
 *.pyc
 .pytest_cache/

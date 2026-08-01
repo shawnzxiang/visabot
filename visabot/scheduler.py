@@ -6,7 +6,8 @@ import time
 from datetime import datetime, timedelta
 
 from . import booker, config, confirmer, detector, notifier, verifier
-from .client import AisClient, CaptchaDetected, MaintenancePage, NeedsRecon, SessionExpired
+from .client import (AisClient, CaptchaDetected, LoginFailed, MaintenancePage,
+                     NeedsRecon, SessionExpired)
 from .store import Store
 
 log = logging.getLogger(__name__)
@@ -161,6 +162,19 @@ def run_loop(store: Store) -> None:
                 f"Please log in manually once in a browser ({SIGN_IN_URL}) — that usually "
                 "clears the flag. The bot backs off for 12 h and then retries.\n"
                 f"Detail: {exc}",
+                urgent=True)
+        except LoginFailed as exc:
+            # Never retry rejected credentials on a schedule — AIS locks accounts.
+            store.event("error", "login_rejected", str(exc))
+            store.set_backoff(datetime.now() + timedelta(hours=12), "credentials rejected")
+            notifier.send_alert(
+                store, "AIS LOGIN REJECTED — bot paused",
+                f"The site rejected the sign-in ({exc}).\n\n"
+                "The bot has STOPPED trying so your AIS account does not get locked out "
+                "by repeated failures.\n"
+                f"Fix AIS_EMAIL / AIS_PASSWORD in bot/.env (verify by signing in manually "
+                f"at {SIGN_IN_URL}), then restart:\n"
+                "  launchctl kickstart -k gui/$(id -u)/com.shawn.visabot.poller",
                 urgent=True)
         except confirmer.SoftBanSuspected as exc:
             store.event("warn", "softban", str(exc))

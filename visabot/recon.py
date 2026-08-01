@@ -22,15 +22,8 @@ def run(store: Store) -> None:
     print("   ok")
 
     print("2. dashboard / schedule_id ...")
-    html = client.get_account_page()
-    dash_path = client.save_debug("recon_dashboard", html)
-    m = re.search(r"/schedule/(\d+)/", html)
-    if not m:
-        print(f"   !! no /schedule/<id>/ link found — inspect {dash_path}")
-        return
-    client.schedule_id = m.group(1)
-    store.kv_set("schedule_id", client.schedule_id)
-    print(f"   schedule_id = {client.schedule_id}  (saved {dash_path})")
+    client.discover_schedule_id()
+    print(f"   schedule_id = {client.schedule_id}")
 
     print("3. appointment page ...")
     appt = client.get_appointment_page()

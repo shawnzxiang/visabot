@@ -6,6 +6,7 @@ import traceback
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
+from . import client as client_mod
 from . import config, detector, digest, notifier, recon, scheduler, store as store_mod
 from .store import Store
 
@@ -106,6 +107,13 @@ def main() -> int:
             scheduler.run_loop(store)
     except KeyboardInterrupt:
         return 130
+    except client_mod.LoginFailed as exc:
+        print(f"\nAIS rejected the sign-in: {exc}\n"
+              "Not retrying — repeated failures can lock the account.\n"
+              "Verify AIS_EMAIL / AIS_PASSWORD in bot/.env by signing in manually at\n"
+              f"  {config.BASE}/users/sign_in", file=sys.stderr)
+        store.event("error", "login_rejected", str(exc))
+        return 4
     except Exception:
         tb = traceback.format_exc()
         log.error("fatal: %s", tb)
