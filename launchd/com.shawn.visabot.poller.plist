@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.shawn.visabot.poller</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/shawn/Documents/h1b2026appointment/bot/.venv/bin/python</string>
+        <string>-m</string>
+        <string>visabot.main</string>
+        <string>--poll</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/shawn/Documents/h1b2026appointment/bot</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>120</integer>
+    <key>StandardOutPath</key>
+    <string>/Users/shawn/Documents/h1b2026appointment/bot/logs/launchd-poller.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/shawn/Documents/h1b2026appointment/bot/logs/launchd-poller.log</string>
+</dict>
+</plist>
