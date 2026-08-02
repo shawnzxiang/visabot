@@ -1,6 +1,17 @@
 from datetime import date
 
+import pytest
+
 from visabot import config
+
+
+@pytest.fixture(autouse=True)
+def pinned_window(monkeypatch):
+    """Pin the window the tests were written against — config reads the live
+    .env at import, so without this the suite breaks whenever the operator
+    changes EARLIEST_OFFSET_DAYS or LATEST_DATE."""
+    monkeypatch.setattr(config, "EARLIEST_OFFSET_DAYS", 5)
+    monkeypatch.setattr(config, "LATEST_DATE", date(2026, 8, 21))
 
 
 def test_rolling_earliest_example_from_user():

@@ -63,8 +63,19 @@ rotate user-agents, or use proxies.
 | `LATEST_DATE` | latest acceptable date, `YYYY-MM-DD` |
 | `TEST_MODE` | `true` = do everything except the final booking POST |
 | `POLL_BASE_SECONDS` / `POLL_JITTER_SECONDS` | cadence, default 180 / 120 |
+| `NIGHT_MULTIPLIER` | delay multiplier 01:00–06:00; `1` = full speed all night (default 2) |
+| `DASHBOARD_PORT` | local dashboard port (default 8765) |
 
 Restart after editing: `launchctl kickstart -k gui/$(id -u)/com.shawn.visabot.poller`
+— or edit and restart from the dashboard instead.
+
+## Dashboard
+
+`com.shawn.visabot.dashboard` serves **http://127.0.0.1:8765** (loopback only):
+polling history, events, earliest date per consulate, and a `.env` editor —
+secrets stay masked until revealed, saves validate and can kickstart the poller.
+Reveal/save need the `X-Visabot: 1` header plus a localhost `Host`, so random
+web pages can't reach it cross-origin.
 
 Pushover setup: install "Pushover Notifications" on iPhone → create account in-app →
 **buy the $4.99 unlock immediately** (trial expiry fails *silently*) → copy the User

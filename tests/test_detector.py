@@ -1,7 +1,17 @@
 from datetime import date
 
+import pytest
+
 from visabot import config, detector
 from visabot.store import Store
+
+
+@pytest.fixture(autouse=True)
+def pinned_window(monkeypatch):
+    """Pin the window these tests assume — config reads the live .env at
+    import, so the suite must not depend on the operator's settings."""
+    monkeypatch.setattr(config, "EARLIEST_OFFSET_DAYS", 5)
+    monkeypatch.setattr(config, "LATEST_DATE", date(2026, 8, 21))
 
 
 def test_parse_days_skips_garbage():

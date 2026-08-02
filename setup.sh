@@ -9,8 +9,8 @@ HERE="$(pwd)"
 
 # ---- Python: needs 3.10+; the macOS system python3 is too old on many machines ----
 PY=""
-for c in /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3.10 \
-         /usr/local/bin/python3.12 /usr/local/bin/python3.11 /usr/local/bin/python3.10 python3; do
+for c in /opt/homebrew/bin/python3.13 /opt/homebrew/bin/python3.12 /opt/homebrew/bin/python3.11 /opt/homebrew/bin/python3.10 \
+         /usr/local/bin/python3.13 /usr/local/bin/python3.12 /usr/local/bin/python3.11 /usr/local/bin/python3.10 python3; do
     if command -v "$c" >/dev/null 2>&1 && \
        "$c" -c 'import sys; exit(0 if sys.version_info >= (3,10) else 1)' 2>/dev/null; then
         PY="$c"; break
@@ -69,11 +69,14 @@ gen_plist poller --poll '    <key>RunAtLoad</key><true/>
     <key>ThrottleInterval</key><integer>120</integer>'
 gen_plist digest --digest '    <key>StartCalendarInterval</key>
     <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>'
+gen_plist dashboard --dashboard '    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>10</integer>'
 echo "Generated launchd/*.plist for $HERE"
 
 if [ "${1:-}" = "--load" ]; then
     cp launchd/*.plist ~/Library/LaunchAgents/
-    for j in poller digest; do
+    for j in poller digest dashboard; do
         launchctl bootout "gui/$(id -u)/com.shawn.visabot.$j" 2>/dev/null || true
         launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.shawn.visabot.$j.plist
     done

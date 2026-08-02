@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visa Bot</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1b2430; --muted: #66707d;
+    --line: #e3e6ea; --accent: #2563eb; --good: #16a34a; --warn: #d97706;
+    --bad: #dc2626; --chip: #eef1f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10141a; --card: #171d26; --ink: #e6eaf0; --muted: #8a94a3;
+      --line: #29313d; --accent: #60a5fa; --good: #4ade80; --warn: #fbbf24;
+      --bad: #f87171; --chip: #202836;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+           padding: 14px 22px; border-bottom: 1px solid var(--line);
+           position: sticky; top: 0; background: var(--bg); z-index: 5; }
+  h1 { font-size: 17px; margin: 0 10px 0 0; }
+  h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted);
+       text-transform: uppercase; letter-spacing: .06em; }
+  main { max-width: 1060px; margin: 0 auto; padding: 20px 22px 60px;
+         display: flex; flex-direction: column; gap: 22px; }
+  section { background: var(--card); border: 1px solid var(--line);
+            border-radius: 10px; padding: 16px 18px; }
+  .pill { padding: 3px 10px; border-radius: 999px; background: var(--chip);
+          font-size: 12.5px; white-space: nowrap; }
+  .pill b { font-weight: 600; }
+  .pill.good { color: var(--good); } .pill.warn { color: var(--warn); }
+  .pill.bad  { color: var(--bad); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .card.hit { border-color: var(--good); box-shadow: 0 0 0 1px var(--good); }
+  .card .post { font-size: 12px; color: var(--muted); }
+  .card .date { font-size: 15px; font-weight: 600; margin-top: 2px; }
+  .card .seen { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .tablewrap { max-height: 380px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+  thead th { position: sticky; top: 0; background: var(--card); color: var(--muted);
+             font-weight: 500; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  td.none { color: var(--muted); }
+  td.hit { color: var(--good); font-weight: 600; }
+  .lv-warn { color: var(--warn); } .lv-error { color: var(--bad); }
+  .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  select, input, button {
+    font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; }
+  button { cursor: pointer; background: var(--chip); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .cfg { display: grid; grid-template-columns: 220px 1fr 36px; gap: 8px 10px; align-items: center; }
+  .cfg label { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+  .cfg .hint { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); margin: -4px 0 4px; }
+  .cfg input { width: 100%; }
+  .cfg input.dirty { border-color: var(--warn); }
+  .cfg input.err { border-color: var(--bad); }
+  .eye { text-align: center; user-select: none; }
+  .savebar { display: flex; gap: 12px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
+  #saveMsg { font-size: 13px; color: var(--muted); }
+  #saveMsg.good { color: var(--good); } #saveMsg.bad { color: var(--bad); }
+  .spacer { flex: 1; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛂 Visa Bot</h1>
+  <span class="pill" id="pPoller">poller: …</span>
+  <span class="pill" id="pMode">…</span>
+  <span class="pill" id="pBudget">budget …</span>
+  <span class="pill" id="pWindow">window …</span>
+  <span class="pill" id="pCadence">cadence …</span>
+  <span class="pill" id="pExtra" hidden></span>
+  <span class="spacer"></span>
+  <span class="pill" id="pLast">last poll: …</span>
+  <button id="restartBtn" title="launchctl kickstart -k the poller">Restart poller</button>
+</header>
+<main>
+  <section>
+    <h2>Earliest date per consulate <span id="latestNote" style="text-transform:none"></span></h2>
+    <div class="cards" id="postCards"></div>
+  </section>
+
+  <section>
+    <h2>Polling history</h2>
+    <div class="controls">
+      <select id="histHours">
+        <option value="6">last 6 h</option>
+        <option value="24" selected>last 24 h</option>
+        <option value="72">last 3 days</option>
+        <option value="168">last 7 days</option>
+        <option value="720">last 30 days</option>
+      </select>
+      <select id="histPost"><option>All</option></select>
+      <span id="histCount" style="color:var(--muted);font-size:12.5px"></span>
+    </div>
+    <div class="tablewrap"><table id="histTable">
+      <thead><tr><th>checked at</th><th>consulate</th><th>earliest date shown</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Events</h2>
+    <div class="tablewrap"><table id="evTable">
+      <thead><tr><th>time</th><th>level</th><th>code</th><th>detail</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Configuration <span style="text-transform:none">(.env — secrets stay hidden until you press 👁)</span></h2>
+    <div class="cfg" id="cfgGrid"></div>
+    <div class="savebar">
+      <button id="saveBtn" class="primary">Save changes</button>
+      <label><input type="checkbox" id="restartAfter" checked> restart poller to apply</label>
+      <span id="saveMsg"></span>
+    </div>
+  </section>
+</main>
+
+<script>
+const HINTS = {
+  AIS_EMAIL: "ais.usvisa-info.com login",
+  AIS_PASSWORD: "ais.usvisa-info.com password",
+  PUSHOVER_USER_KEY: "pushover.net user key (30 chars)",
+  PUSHOVER_APP_TOKEN: "pushover.net application token (30 chars)",
+  EARLIEST_OFFSET_DAYS: "earliest bookable date = today + this many days",
+  LATEST_DATE: "latest acceptable appointment date (YYYY-MM-DD)",
+  TEST_MODE: "true = stop right before the booking POST (dry run)",
+  POLL_BASE_SECONDS: "seconds between polls before jitter (min 60; default 180)",
+  POLL_JITTER_SECONDS: "random 0..N seconds added to each delay (default 120)",
+  NIGHT_MULTIPLIER: "delay multiplier 01:00–06:00; 1 = same speed all night",
+  DAILY_RUNAWAY_GUARD: "hard stop after this many requests/day (bug guard)",
+  DASHBOARD_PORT: "port for this dashboard (restart dashboard agent to apply)",
+};
+const $ = (s) => document.querySelector(s);
+const api = async (url, opts = {}) => {
+  const r = await fetch(url, { ...opts,
+    headers: { "X-Visabot": "1", ...(opts.headers || {}) } });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw Object.assign(new Error("http " + r.status), { data });
+  return data;
+};
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---- overview ----
+async function refreshOverview() {
+  const o = await api("/api/overview");
+  const p = o.poller;
+  const pl = $("#pPoller");
+  pl.textContent = p.running ? `poller: ● running (pid ${p.pid})`
+                 : p.loaded ? "poller: ○ loaded, not running" : "poller: ○ not loaded";
+  pl.className = "pill " + (p.running ? "good" : "bad");
+  const m = $("#pMode");
+  m.textContent = o.test_mode ? "TEST MODE — will not book" : "LIVE — will book";
+  m.className = "pill " + (o.test_mode ? "warn" : "good");
+  $("#pBudget").textContent = `budget ${o.budget.used}/${o.budget.limit} today`;
+  $("#pWindow").textContent = `window ${o.window[0]} → ${o.window[1]}`;
+  const c = o.cadence;
+  $("#pCadence").textContent = `every ${c.base}–${c.base + c.jitter}s` +
+    (c.night_multiplier > 1 ? ` (×${c.night_multiplier} at night)` : " (24/7)");
+  $("#pLast").textContent = "last poll: " + (o.last_poll ? o.last_poll.replace("T", " ") : "—");
+  const ex = $("#pExtra");
+  if (o.booked) { ex.hidden = false; ex.textContent = "✓ BOOKED"; ex.className = "pill good"; }
+  else if (o.backoff_until) { ex.hidden = false; ex.className = "pill bad";
+    ex.textContent = `backing off until ${o.backoff_until.replace("T", " ")} (ban streak ${o.ban_streak})`; }
+  else ex.hidden = true;
+
+  $("#postCards").innerHTML = o.latest.map((x) => `
+    <div class="card ${x.in_window ? "hit" : ""}">
+      <div class="post">${esc(x.post)}</div>
+      <div class="date">${esc(x.earliest || "—")}</div>
+      <div class="seen">${x.ts ? "seen " + esc(x.ts.replace("T", " ").slice(5)) : "no data yet"}</div>
+    </div>`).join("");
+  $("#latestNote").textContent = `— green border = inside your window`;
+
+  const sel = $("#histPost");
+  if (sel.options.length === 1)
+    for (const x of o.latest) sel.add(new Option(x.post));
+}
+
+// ---- history & events ----
+async function refreshHistory() {
+  const hours = $("#histHours").value, post = $("#histPost").value;
+  const { rows } = await api(`/api/history?hours=${hours}&post=${encodeURIComponent(post)}`);
+  $("#histCount").textContent = `${rows.length} checks${rows.length === 2000 ? " (capped)" : ""}`;
+  $("#histTable tbody").innerHTML = rows.map(([ts, p, d]) => `
+    <tr><td>${esc(ts.replace("T", " "))}</td><td>${esc(p)}</td>
+    <td class="${d ? "" : "none"}">${esc(d || "none available")}</td></tr>`).join("")
+    || `<tr><td colspan="3" class="none">no polls in this range</td></tr>`;
+}
+async function refreshEvents() {
+  const { rows } = await api("/api/events?hours=168");
+  $("#evTable tbody").innerHTML = rows.map(([ts, lv, code, msg]) => `
+    <tr><td>${esc(ts.replace("T", " "))}</td><td class="lv-${esc(lv)}">${esc(lv)}</td>
+    <td>${esc(code)}</td><td>${esc(msg)}</td></tr>`).join("")
+    || `<tr><td colspan="4" class="none">no events in the last 7 days</td></tr>`;
+}
+
+// ---- config ----
+let revealed = false;
+async function loadConfig() {
+  const { keys } = await api("/api/config");
+  $("#cfgGrid").innerHTML = keys.map((k) => `
+    <label for="f_${esc(k.key)}">${esc(k.key)}</label>
+    <input id="f_${esc(k.key)}" data-key="${esc(k.key)}" data-secret="${k.secret ? 1 : 0}"
+           type="${k.secret ? "password" : "text"}" value="${esc(k.value)}"
+           autocomplete="off" spellcheck="false">
+    <span class="eye">${k.secret ? `<button type="button" data-eye="${esc(k.key)}" title="show/hide">👁</button>` : ""}</span>
+    ${HINTS[k.key] ? `<span class="hint">${esc(HINTS[k.key])}</span>` : ""}`).join("");
+  revealed = false;
+  document.querySelectorAll("#cfgGrid input").forEach((i) => {
+    i.dataset.orig = i.value;
+    i.addEventListener("input", () => i.classList.toggle("dirty", i.value !== i.dataset.orig));
+  });
+  document.querySelectorAll("[data-eye]").forEach((b) =>
+    b.addEventListener("click", () => toggleEye(b.dataset.eye)));
+}
+async function toggleEye(key) {
+  const input = document.querySelector(`input[data-key="${CSS.escape(key)}"]`);
+  if (input.type === "text") { input.type = "password"; return; }
+  if (!revealed) {
+    const { keys } = await api("/api/config?reveal=1");
+    for (const k of keys) {
+      const el = document.querySelector(`input[data-key="${CSS.escape(k.key)}"]`);
+      if (el && el.dataset.secret === "1" && !el.classList.contains("dirty")) {
+        el.value = k.value; el.dataset.orig = k.value;
+      }
+    }
+    revealed = true;
+  }
+  input.type = "text";
+}
+async function save() {
+  const msg = $("#saveMsg");
+  const updates = {};
+  document.querySelectorAll("#cfgGrid input").forEach((i) => {
+    i.classList.remove("err");
+    if (i.value !== i.dataset.orig) updates[i.dataset.key] = i.value;
+  });
+  if (!Object.keys(updates).length) { msg.className = ""; msg.textContent = "nothing changed"; return; }
+  $("#saveBtn").disabled = true;
+  try {
+    const res = await api("/api/config", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ updates, restart: $("#restartAfter").checked }) });
+    msg.className = "good";
+    msg.textContent = `saved ${res.saved.join(", ")}` +
+      (res.restarted ? " — poller restarted" : $("#restartAfter").checked
+        ? ` — poller restart FAILED: ${res.detail}` : " — restart poller to apply");
+    await loadConfig(); await refreshOverview();
+  } catch (e) {
+    msg.className = "bad";
+    const errs = e.data && e.data.errors;
+    if (errs) {
+      msg.textContent = Object.entries(errs).map(([k, v]) => `${k}: ${v}`).join("; ");
+      for (const k of Object.keys(errs))
+        document.querySelector(`input[data-key="${CSS.escape(k)}"]`)?.classList.add("err");
+    } else msg.textContent = "save failed: " + ((e.data && e.data.error) || e.message);
+  } finally { $("#saveBtn").disabled = false; }
+}
+
+$("#saveBtn").addEventListener("click", save);
+$("#histHours").addEventListener("change", refreshHistory);
+$("#histPost").addEventListener("change", refreshHistory);
+$("#restartBtn").addEventListener("click", async () => {
+  $("#restartBtn").disabled = true;
+  try { await api("/api/restart", { method: "POST", body: "{}" }); } finally {
+    setTimeout(async () => { $("#restartBtn").disabled = false; await refreshOverview(); }, 1500);
+  }
+});
+
+async function refreshAll() {
+  try { await Promise.all([refreshOverview(), refreshHistory(), refreshEvents()]); }
+  catch (e) { console.error(e); }
+}
+refreshAll(); loadConfig();
+setInterval(() => { if (!document.hidden) refreshAll(); }, 60000);
+</script>
+</body>
+</html>

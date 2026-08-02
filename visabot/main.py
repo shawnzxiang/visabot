@@ -66,6 +66,8 @@ def main() -> int:
     g.add_argument("--recon", action="store_true", help="read-only site walk, saves snapshots")
     g.add_argument("--digest", action="store_true", help="send the daily digest email")
     g.add_argument("--test-notify", action="store_true", help="send a test push notification and exit")
+    g.add_argument("--dashboard", action="store_true",
+                   help="serve the local web dashboard on 127.0.0.1 (launchd entry)")
     g.add_argument("--test-email", dest="test_notify", action="store_true",
                    help=argparse.SUPPRESS)  # legacy alias
     g.add_argument("--simulate", metavar="FIXTURE", help="run detector+decision on a saved payment page, no network")
@@ -75,7 +77,7 @@ def main() -> int:
     log = logging.getLogger("visabot")
 
     needs_ais = args.poll or args.once or args.recon or args.sweep
-    fatal = [] if args.simulate else check_env(needs_ais)
+    fatal = [] if (args.simulate or args.dashboard) else check_env(needs_ais)
     if fatal:
         print(f"bot/.env is incomplete — fill in: {', '.join(fatal)}", file=sys.stderr)
         return 2
@@ -115,6 +117,9 @@ def main() -> int:
         elif args.digest:
             digest.run(store)
             print("digest sent")
+        elif args.dashboard:
+            from . import dashboard
+            dashboard.run()
         elif args.poll:
             scheduler.run_loop(store)
     except KeyboardInterrupt:

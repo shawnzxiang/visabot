@@ -51,7 +51,8 @@ TEST_MODE = os.environ.get("TEST_MODE", "true").strip().lower() not in ("false",
 POLL_BASE_SECONDS = int(os.environ.get("POLL_BASE_SECONDS", "180"))
 POLL_JITTER_SECONDS = int(os.environ.get("POLL_JITTER_SECONDS", "120"))
 NIGHT_HOURS = (1, 6)         # 01:00-06:00 local
-NIGHT_MULTIPLIER = 2         # ease off overnight, but keep watching
+# Multiply the delay during NIGHT_HOURS; 1 = poll at full speed all night.
+NIGHT_MULTIPLIER = float(os.environ.get("NIGHT_MULTIPLIER", "2"))
 
 # NOT a rate limit — a runaway guard so a bug cannot hammer the site.
 # Expected real usage is ~250-360 requests/day at this cadence.
@@ -79,6 +80,9 @@ ROTATION = ["Vancouver", "Calgary", "Halifax",
 
 MAINTENANCE_BACKOFF_MINUTES = 60
 LOGIN_FAIL_BACKOFF_HOURS = 2
+
+# Local web dashboard (loopback only)
+DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "8765"))
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
