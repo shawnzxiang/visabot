@@ -10,11 +10,18 @@
     --line: #e3e6ea; --accent: #2563eb; --good: #16a34a; --warn: #d97706;
     --bad: #dc2626; --chip: #eef1f5;
   }
+  :root {
+    /* categorical series slots — fixed per consulate, validated for CVD safety */
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+    --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7;
+  }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #10141a; --card: #171d26; --ink: #e6eaf0; --muted: #8a94a3;
       --line: #29313d; --accent: #60a5fa; --good: #4ade80; --warn: #fbbf24;
       --bad: #f87171; --chip: #202836;
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500;
+      --s5: #d55181; --s6: #008300; --s7: #9085e9;
     }
   }
   * { box-sizing: border-box; }
@@ -64,6 +71,26 @@
   .cfg input.dirty { border-color: var(--warn); }
   .cfg input.err { border-color: var(--bad); }
   .eye { text-align: center; user-select: none; }
+  #chartWrap { position: relative; margin-bottom: 4px; outline: none; }
+  #chartWrap:focus-visible { box-shadow: 0 0 0 2px var(--accent); border-radius: 6px; }
+  #chart { display: block; width: 100%; height: 260px; }
+  #chart text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #chart .grid { stroke: var(--line); }
+  #chart .xhair { stroke: var(--muted); stroke-dasharray: 3 3; }
+  #chart .endlbl { fill: var(--ink); }
+  #chart .empty { fill: var(--muted); font-size: 12.5px; }
+  #tip { position: absolute; background: var(--card); border: 1px solid var(--line);
+         border-radius: 8px; padding: 7px 10px; font-size: 12px; pointer-events: none;
+         box-shadow: 0 4px 14px rgba(0,0,0,.15); white-space: nowrap; z-index: 10; }
+  #tip .t { color: var(--muted); margin-bottom: 4px; }
+  #tip .v { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #tip .n { color: var(--muted); }
+  #tip .none { color: var(--muted); font-weight: 400; }
+  #tip table { border-collapse: collapse; } #tip td { padding: 1px 4px 1px 0; border: none; }
+  .lkey { display: inline-block; width: 14px; height: 2px; border-radius: 1px;
+          vertical-align: middle; margin-right: 5px; }
+  #legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 12px;
+            font-size: 12px; color: var(--muted); }
   .savebar { display: flex; gap: 12px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
   #saveMsg { font-size: 13px; color: var(--muted); }
   #saveMsg.good { color: var(--good); } #saveMsg.bad { color: var(--bad); }
@@ -103,6 +130,12 @@
       <select id="histPost"><option>All</option></select>
       <span id="histCount" style="color:var(--muted);font-size:12.5px"></span>
     </div>
+    <div id="chartWrap" tabindex="0" role="img"
+         aria-label="Earliest available appointment date per consulate over time. Arrow keys step through poll times; the table below holds the same data.">
+      <svg id="chart"></svg>
+      <div id="tip" hidden></div>
+    </div>
+    <div id="legend" hidden></div>
     <div class="tablewrap"><table id="histTable">
       <thead><tr><th>checked at</th><th>consulate</th><th>earliest date shown</th></tr></thead>
       <tbody></tbody>
@@ -193,13 +226,211 @@ async function refreshOverview() {
 // ---- history & events ----
 async function refreshHistory() {
   const hours = $("#histHours").value, post = $("#histPost").value;
-  const { rows } = await api(`/api/history?hours=${hours}&post=${encodeURIComponent(post)}`);
-  $("#histCount").textContent = `${rows.length} checks${rows.length === 2000 ? " (capped)" : ""}`;
-  $("#histTable tbody").innerHTML = rows.map(([ts, p, d]) => `
-    <tr><td>${esc(ts.replace("T", " "))}</td><td>${esc(p)}</td>
-    <td class="${d ? "" : "none"}">${esc(d || "none available")}</td></tr>`).join("")
-    || `<tr><td colspan="3" class="none">no polls in this range</td></tr>`;
+  $("#chartWrap").style.opacity = ".55";               // hold the old frame while loading
+  try {
+    const { rows } = await api(`/api/history?hours=${hours}&post=${encodeURIComponent(post)}`);
+    $("#histCount").textContent = `${rows.length} checks${rows.length === 2000 ? " (capped)" : ""}`;
+    renderChart(rows, +hours);
+    $("#histTable tbody").innerHTML = rows.map(([ts, p, d]) => `
+      <tr><td>${esc(ts.replace("T", " "))}</td><td>${esc(p)}</td>
+      <td class="${d ? "" : "none"}">${esc(d || "none available")}</td></tr>`).join("")
+      || `<tr><td colspan="3" class="none">no polls in this range</td></tr>`;
+  } finally { $("#chartWrap").style.opacity = "1"; }
 }
+
+// ---- availability chart ----
+// One line per consulate: x = poll time, y = earliest date offered. A poll that
+// returned "none available" contributes no point, so lines break there.
+const POSTS = ["Vancouver", "Calgary", "Halifax", "Ottawa", "Montreal", "Quebec City", "Toronto"];
+const COLOR = Object.fromEntries(POSTS.map((p, i) => [p, `var(--s${i + 1})`]));
+const SVGNS = "http://www.w3.org/2000/svg";
+const pad2 = (n) => String(n).padStart(2, "0");
+const fmtDate = (ms) => { const d = new Date(ms);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const fmtClock = (ms) => { const d = new Date(ms);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+let chartLast = null, chartState = null;
+
+function elns(tag, attrs, parent) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+// Cluster rows into polling cycles: timestamps < 2 min apart are one cycle.
+function binRows(rows) {
+  const bins = [];
+  for (const [ts, post, d] of [...rows].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const t = new Date(ts).getTime();
+    let b = bins[bins.length - 1];
+    if (!b || t - b.t1 > 120000) { b = { t0: t, t1: t, posts: {} }; bins.push(b); }
+    b.t1 = t;
+    b.posts[post] = d || null;
+  }
+  for (const b of bins) b.x = (b.t0 + b.t1) / 2;
+  return bins;
+}
+
+function renderChart(rows, hours) {
+  chartLast = { rows, hours };
+  const wrap = $("#chartWrap"), svg = $("#chart"), legend = $("#legend");
+  svg.replaceChildren(); $("#tip").hidden = true; chartState = null;
+  const W = Math.max(wrap.clientWidth, 320), H = 260;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  const bins = binRows(rows);
+  const series = POSTS.filter((p) => bins.some((b) => b.posts[p]));
+
+  legend.replaceChildren();
+  legend.hidden = series.length < 2;      // one series is named by the filter itself
+  for (const p of series) {
+    const item = document.createElement("span");
+    const key = document.createElement("span");
+    key.className = "lkey"; key.style.background = COLOR[p];
+    item.append(key, document.createTextNode(p));
+    legend.append(item);
+  }
+
+  if (!series.length) {
+    const t = elns("text", { x: W / 2, y: H / 2, "text-anchor": "middle", class: "empty" }, svg);
+    t.textContent = "no availability seen in this range — lines appear when a consulate offers dates";
+    return;
+  }
+
+  const M = { t: 12, r: series.length <= 4 ? 100 : 16, b: 24, l: 84 };
+  const pw = W - M.l - M.r, ph = H - M.t - M.b;
+  const x1 = Date.now(), x0 = x1 - hours * 3600e3;
+  let y0 = Infinity, y1 = -Infinity;
+  for (const b of bins) for (const p of series) {
+    const d = b.posts[p];
+    if (d) { const v = new Date(d + "T00:00:00").getTime(); y0 = Math.min(y0, v); y1 = Math.max(y1, v); }
+  }
+  const ypad = Math.max((y1 - y0) * 0.08, 15 * 86400e3);
+  y0 -= ypad; y1 += ypad;
+  const X = (t) => M.l + ((t - x0) / (x1 - x0)) * pw;
+  const Y = (v) => M.t + (1 - (v - y0) / (y1 - y0)) * ph;
+
+  // grid + axes (recessive hairlines, muted labels)
+  for (let i = 0; i <= 4; i++) {
+    const v = y0 + ((y1 - y0) * i) / 4, y = Y(v);
+    elns("line", { x1: M.l, x2: M.l + pw, y1: y, y2: y, class: "grid" }, svg);
+    const t = elns("text", { x: M.l - 8, y: y + 4, "text-anchor": "end" }, svg);
+    t.textContent = fmtDate(v);
+  }
+  const nx = Math.min(6, Math.max(2, Math.floor(pw / 110)));
+  for (let i = 0; i <= nx; i++) {
+    const tms = x0 + ((x1 - x0) * i) / nx;
+    const t = elns("text", { x: X(tms), y: H - 6, "text-anchor": "middle" }, svg);
+    t.textContent = hours <= 36 ? fmtClock(tms) : `${pad2(new Date(tms).getMonth() + 1)}-${pad2(new Date(tms).getDate())}`;
+  }
+
+  // series: 2px lines broken at gaps; isolated points become dots
+  const ends = [];
+  for (const p of series) {
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2)
+        elns("path", { d: "M" + run.map(([px, py]) => `${px.toFixed(1)},${py.toFixed(1)}`).join("L"),
+                       fill: "none", stroke: COLOR[p], "stroke-width": 2,
+                       "stroke-linejoin": "round", "stroke-linecap": "round" }, svg);
+      else if (run.length === 1)
+        elns("circle", { cx: run[0][0], cy: run[0][1], r: 3, fill: COLOR[p] }, svg);
+      run = [];
+    };
+    for (const b of bins) {
+      const d = b.posts[p];
+      if (d && b.x >= x0) run.push([X(b.x), Y(new Date(d + "T00:00:00").getTime())]);
+      else flush();
+    }
+    flush();
+    const lastBin = [...bins].reverse().find((b) => b.posts[p]);
+    if (lastBin) ends.push({ p, y: Y(new Date(lastBin.posts[p] + "T00:00:00").getTime()) });
+  }
+
+  // direct end-labels (ink text keyed by a colored dash), max 4, collision-spread
+  if (series.length <= 4) {
+    ends.sort((a, b) => a.y - b.y);
+    for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 14);
+    for (const e of ends) {
+      elns("line", { x1: M.l + pw + 6, x2: M.l + pw + 16, y1: e.y, y2: e.y,
+                     stroke: COLOR[e.p], "stroke-width": 2 }, svg);
+      const t = elns("text", { x: M.l + pw + 20, y: e.y + 4, class: "endlbl" }, svg);
+      t.textContent = e.p;
+    }
+  }
+
+  // crosshair + tooltip layer
+  const xhair = elns("line", { y1: M.t, y2: M.t + ph, class: "xhair", visibility: "hidden" }, svg);
+  const inRange = bins.filter((b) => b.x >= x0);
+  chartState = { bins: inRange, series, X, M, pw, ph, W, idx: -1, xhair };
+  elns("rect", { x: M.l, y: M.t, width: pw, height: ph, fill: "transparent" }, svg);
+}
+
+function showBin(i, anchorPx) {
+  const st = chartState;
+  if (!st || !st.bins.length) return;
+  st.idx = Math.max(0, Math.min(i, st.bins.length - 1));
+  const b = st.bins[st.idx], px = st.X(b.x);
+  st.xhair.setAttribute("x1", px); st.xhair.setAttribute("x2", px);
+  st.xhair.setAttribute("visibility", "visible");
+  const tip = $("#tip");
+  tip.replaceChildren();
+  const head = document.createElement("div");
+  head.className = "t";
+  head.textContent = `${fmtDate(b.t0)} ${fmtClock(b.t0)}`;
+  tip.append(head);
+  const tbl = document.createElement("table");
+  for (const p of st.series) {
+    const tr = document.createElement("tr");
+    const k = document.createElement("td"), v = document.createElement("td"), n = document.createElement("td");
+    const key = document.createElement("span");
+    key.className = "lkey"; key.style.background = COLOR[p];
+    k.append(key);
+    v.className = "v";
+    if (b.posts[p]) v.textContent = b.posts[p];
+    else { v.textContent = "none"; v.className = "none"; }
+    n.className = "n"; n.textContent = p;
+    tr.append(k, v, n); tbl.append(tr);
+  }
+  tip.append(tbl);
+  tip.hidden = false;
+  const wrapW = $("#chartWrap").clientWidth;
+  const scale = wrapW / st.W;                      // viewBox px -> css px
+  const cx = (anchorPx ?? px) * scale;
+  tip.style.top = "14px";
+  tip.style.left = (cx + tip.offsetWidth + 24 > wrapW ? cx - tip.offsetWidth - 12 : cx + 12) + "px";
+}
+function hideTip() {
+  $("#tip").hidden = true;
+  if (chartState) { chartState.xhair.setAttribute("visibility", "hidden"); chartState.idx = -1; }
+}
+
+$("#chartWrap").addEventListener("pointermove", (ev) => {
+  const st = chartState;
+  if (!st || !st.bins.length) return;
+  const r = $("#chartWrap").getBoundingClientRect();
+  const mx = ((ev.clientX - r.left) / r.width) * st.W;  // css px -> viewBox px
+  let best = 0, bd = Infinity;
+  st.bins.forEach((b, i) => { const d = Math.abs(st.X(b.x) - mx); if (d < bd) { bd = d; best = i; } });
+  showBin(best, mx);
+});
+$("#chartWrap").addEventListener("pointerleave", hideTip);
+$("#chartWrap").addEventListener("focus", () => chartState && showBin(chartState.bins.length - 1));
+$("#chartWrap").addEventListener("blur", hideTip);
+$("#chartWrap").addEventListener("keydown", (ev) => {
+  const st = chartState;
+  if (!st) return;
+  if (ev.key === "ArrowLeft" || ev.key === "ArrowRight") {
+    ev.preventDefault();
+    showBin((st.idx < 0 ? st.bins.length - 1 : st.idx) + (ev.key === "ArrowRight" ? 1 : -1));
+  } else if (ev.key === "Escape") hideTip();
+});
+let resizeT;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeT);
+  resizeT = setTimeout(() => chartLast && renderChart(chartLast.rows, chartLast.hours), 150);
+});
 async function refreshEvents() {
   const { rows } = await api("/api/events?hours=168");
   $("#evTable tbody").innerHTML = rows.map(([ts, lv, code, msg]) => `
