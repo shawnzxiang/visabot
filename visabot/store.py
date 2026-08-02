@@ -108,10 +108,13 @@ class Store:
             (since_iso,),
         ).fetchall()
 
-    def last_seen_by_post(self):
-        """Most recent non-null earliest_date ever observed, per post."""
+    def best_ever_by_post(self):
+        """-> [(post, earliest date ever seen, when it was seen)] across all history.
+
+        SQLite fills the bare `ts` column from the row that produced MIN().
+        """
         return self.conn.execute(
-            "SELECT post, MAX(ts), earliest_date FROM availability "
+            "SELECT post, MIN(earliest_date), ts FROM availability "
             "WHERE earliest_date IS NOT NULL GROUP BY post"
         ).fetchall()
 

@@ -51,26 +51,43 @@ def build(store: Store) -> tuple[str, str]:
         lines += [f"Booked: {details.get('post')} {details.get('date')} {details.get('time')} "
                   f"(at {details.get('at')})", ""]
 
-    lines.append("Availability seen in the last 24 h (earliest date per post):")
+    # Earliest appointment per consulate: where it stands now, and the best it got.
     rows = store.availability_since(day_ago)
     by_post: dict[str, list] = {}
     for ts, post, d in rows:
-        by_post.setdefault(post, []).append(d)
+        by_post.setdefault(post, []).append((ts, d))
+
+    lines.append("EARLIEST APPOINTMENT PER CONSULATE  (now / best in 24 h):")
     if by_post:
         for post in config.ROTATION:
-            if post in by_post:
-                seen = [d for d in by_post[post] if d]
-                lines.append(f"  {post:<12} {min(seen) if seen else '—'}  "
-                             f"({len(by_post[post])} polls, {len(seen)} with dates)")
+            entries = by_post.get(post)
+            if not entries:
+                continue
+            dates = [d for _, d in entries if d]
+            latest = next((d for _, d in reversed(entries) if d), None)
+            best = min(dates) if dates else None
+            improved = " ** IMPROVED **" if best and latest and best < latest else ""
+            n = len(entries)
+            lines.append(
+                f"  {post:<12} {latest or 'none':<12} / {best or 'none':<12}"
+                f"  ({n} check{'' if n == 1 else 's'}){improved}")
     else:
-        lines.append("  no polls recorded")
+        lines.append("  no checks recorded — see poller health above")
     lines.append("")
 
-    last_ever = store.last_seen_by_post()
-    if last_ever:
-        lines.append("Last time a date was EVER seen, per post:")
-        for post, ts, d in last_ever:
-            lines.append(f"  {post:<12} {d} (at {ts})")
+    all_best = [d for entries in by_post.values() for _, d in entries if d]
+    if all_best:
+        lines.append(f"Best date anywhere in Canada today: {min(all_best)}")
+        lo, hi = config.window()
+        lines.append(f"Needed for a booking: {lo} .. {hi}"
+                     + ("  <-- IN RANGE" if min(all_best) <= hi.isoformat() else ""))
+        lines.append("")
+
+    best_ever = store.best_ever_by_post()
+    if best_ever:
+        lines.append("Earliest date ever recorded, per consulate (all time):")
+        for post, d, ts in sorted(best_ever, key=lambda r: r[1]):
+            lines.append(f"  {post:<12} {d} (seen {ts[:16].replace('T', ' ')})")
         lines.append("")
 
     attempts = store.attempts_since(day_ago)

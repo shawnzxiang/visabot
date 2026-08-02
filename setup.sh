@@ -68,7 +68,7 @@ gen_plist poller --poll '    <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>ThrottleInterval</key><integer>120</integer>'
 gen_plist digest --digest '    <key>StartCalendarInterval</key>
-    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>'
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>'
 echo "Generated launchd/*.plist for $HERE"
 
 if [ "${1:-}" = "--load" ]; then
