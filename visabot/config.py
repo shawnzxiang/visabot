@@ -44,18 +44,18 @@ EARLIEST_OFFSET_DAYS = int(os.environ.get("EARLIEST_OFFSET_DAYS", "5"))
 LATEST_DATE = date.fromisoformat(os.environ.get("LATEST_DATE", "2026-08-21"))
 TEST_MODE = os.environ.get("TEST_MODE", "true").strip().lower() not in ("false", "0", "no")
 
-# Polling cadence: 300 s base + 0-240 s jitter => 5-9 min, mean 7. These are the
-# values an actively-maintained Canada fork (sunjogthind/usvisa-ca-script) settled
-# on after weeks of real use; AIS bans on cumulative count, so the bot reacts to
-# the ban rather than trying to stay under an invented daily quota.
-POLL_BASE_SECONDS = int(os.environ.get("POLL_BASE_SECONDS", "300"))
-POLL_JITTER_SECONDS = int(os.environ.get("POLL_JITTER_SECONDS", "240"))
+# Polling cadence: kcajc/usvisa-ca's 180 s, plus 0-120 s jitter (it uses a fixed
+# 180 s with no jitter) => 3-5 min, mean 4. ~15 checks/hour, ~360/day at full
+# uptime — the same volume as that reference bot. AIS bans on cumulative count,
+# so expect periodic soft-bans; the backoff ladder below absorbs them.
+POLL_BASE_SECONDS = int(os.environ.get("POLL_BASE_SECONDS", "180"))
+POLL_JITTER_SECONDS = int(os.environ.get("POLL_JITTER_SECONDS", "120"))
 NIGHT_HOURS = (1, 6)         # 01:00-06:00 local
 NIGHT_MULTIPLIER = 2         # ease off overnight, but keep watching
 
 # NOT a rate limit — a runaway guard so a bug cannot hammer the site.
-# Expected real usage is ~120-180 requests/day.
-DAILY_RUNAWAY_GUARD = int(os.environ.get("DAILY_RUNAWAY_GUARD", "400"))
+# Expected real usage is ~250-360 requests/day at this cadence.
+DAILY_RUNAWAY_GUARD = int(os.environ.get("DAILY_RUNAWAY_GUARD", "800"))
 BURST_RESERVE = 8
 MAX_BOOK_ATTEMPTS_PER_DAY = 3
 MAX_BOOK_ATTEMPTS_TOTAL = 6

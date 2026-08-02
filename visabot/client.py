@@ -240,19 +240,26 @@ class AisClient:
 
     @staticmethod
     def parse_booking_form(html: str) -> dict:
-        """Hidden inputs from the appointment page; defaults match jeangnc's hardcodes."""
+        """The non-appointment fields a browser submits from the booking form.
+
+        Verified field-by-field against the live en-ca form (2026-08-01). Note what
+        is absent: no `utf8`, and no `asc_appointment` group at all — every Canadian
+        post carries data-collects-biometrics="false", so there is no separate
+        Applicant Service Center appointment to submit. Bots written for other
+        countries send those fields; sending them here would not match the form.
+        """
         soup = BeautifulSoup(html, "html.parser")
 
-        def hidden(name: str, default: str) -> str:
+        def field(name: str, default: str) -> str:
             el = soup.find("input", attrs={"name": name})
             return el.get("value", default) if el else default
 
         csrf = AisClient._csrf_from(html)
         return {
-            "utf8": hidden("utf8", "✓"),
-            "authenticity_token": hidden("authenticity_token", csrf),
-            "confirmed_limit_message": hidden("confirmed_limit_message", "1"),
-            "use_consulate_appointment_capacity": hidden("use_consulate_appointment_capacity", "true"),
+            "authenticity_token": field("authenticity_token", csrf),
+            "confirmed_limit_message": field("confirmed_limit_message", "1"),
+            "use_consulate_appointment_capacity": field("use_consulate_appointment_capacity", "true"),
+            "commit": field("commit", "Schedule Appointment"),
         }
 
     def post_booking(self, facility_id: int, date_str: str, time_str: str,
@@ -263,9 +270,6 @@ class AisClient:
             "appointments[consulate_appointment][facility_id]": str(facility_id),
             "appointments[consulate_appointment][date]": date_str,
             "appointments[consulate_appointment][time]": time_str,
-            "appointments[asc_appointment][facility_id]": "",
-            "appointments[asc_appointment][date]": "",
-            "appointments[asc_appointment][time]": "",
         }
         resp = self._request(
             "book_post", "POST", url,
