@@ -158,7 +158,7 @@ def overview() -> dict:
             "night_multiplier": float(env.get("NIGHT_MULTIPLIER", "2") or 2),
         },
         "budget": {"used": 0, "limit": guard},
-        "booked": False, "backoff_until": None, "ban_streak": 0,
+        "booked": False, "backoff_until": None,
         "last_poll": None, "attempts_today": 0, "latest": [],
     }
     try:
@@ -176,10 +176,6 @@ def overview() -> dict:
             (midnight,)).fetchone()[0]
         o["booked"] = _kv(conn, "booked") == "1"
         o["last_poll"] = _kv(conn, "last_poll_ts")
-        try:
-            o["ban_streak"] = int(_kv(conn, "ban_streak", "0"))
-        except (TypeError, ValueError):
-            pass
         b = _kv(conn, "backoff_until")
         if b and datetime.fromisoformat(b) > datetime.now():
             o["backoff_until"] = b

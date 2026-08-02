@@ -6,18 +6,18 @@ Pushover.
 
 ```
                     ┌─────────────────────────────────────────┐
-  launchd (poller)  │  every 3-5 min, one consulate in turn    │
-  KeepAlive ───────►│  GET days/{facility}.json               │
+  launchd (poller)  │  every 3-5 min: all 7 consulates,        │
+  KeepAlive ───────►│  back-to-back — GET days/{facility}.json │
                     └──────────────┬──────────────────────────┘
-                                   │
-              ┌────────────────────┼────────────────────┐
-              ▼                    ▼                    ▼
-      date in window?      canary post empty?      nothing yet
-              │                    │                    │
-              ▼                    ▼                    └─► next consulate
-   ① push "SLOT FOUND"      soft-banned:
-              │              pause 30m→1h→2h→4h→5h,
-              ▼              resume when dates flow
+                                   │ per consulate
+                     ┌─────────────┴─────────────┐
+                     ▼                           ▼
+             date in window?                nothing yet
+                     │                           │
+                     ▼                           └─► next consulate,
+   ① push "SLOT FOUND", burst NOW                    then sleep 3-5 min
+              │
+              ▼
    GET times/{facility}.json
               │
               ▼
@@ -36,17 +36,20 @@ your account because the portal is known to report phantom successes, and **③*
 
 ## Cadence
 
-**One consulate every 3–5 minutes** (180 s + 0–120 s jitter), doubled 01:00–06:00.
-~360 checks/day, so each consulate is seen about **every 28 minutes**. Matches
-`kcajc/usvisa-ca`'s flat 180 s, plus jitter.
+**All 7 consulates every 3–5 minutes** (180 s + 0–120 s jitter between cycles;
+posts within a cycle are checked back-to-back, 2–5 s apart, Calgary first since
+the DS-160 on file names it). Each consulate is seen every cycle — ~2,500
+requests/day. Inside a cycle the bot bursts the moment any post shows a date in
+the window, rather than finishing the scan first.
 
-There is no aggregate "all consulates" endpoint for an unbooked account, so posts are
-polled one at a time in rotation. AIS rate-limits by *cumulative request count per
-account* and answers a ban with HTTP 200 and an empty list — indistinguishable from
-"no appointments." The bot detects it with a **canary**: Vancouver, Ottawa and Toronto
-normally hold 100+ open dates, so if one returns zero we're banned, not empty. They
-ride the normal rotation, so detection is free. A ban is per-account: re-login, new
-session and new IP do nothing, only time (~5 h) clears it.
+There is no aggregate "all consulates" endpoint for an unbooked account, so posts
+are fetched one days.json at a time. AIS rate-limits by *cumulative request count
+per account* and answers a ban with HTTP 200 and an empty list — indistinguishable
+from "no appointments." **This bot makes no attempt to detect that**: an empty
+answer is simply recorded as "none available" and polling continues. A ban is
+per-account (re-login, new session and new IP do nothing; only time — reportedly
+~5 h — clears it), so if every post suddenly reads empty for hours, consider
+slowing `POLL_BASE_SECONDS` down.
 
 ⚠️ AIS prohibits automated access in its Terms of Use, FAQ, and a notice on the
 sign-in page; the stated remedy is account suspension. No numeric limit is published.

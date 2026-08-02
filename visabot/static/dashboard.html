@@ -137,8 +137,8 @@ const HINTS = {
   EARLIEST_OFFSET_DAYS: "earliest bookable date = today + this many days",
   LATEST_DATE: "latest acceptable appointment date (YYYY-MM-DD)",
   TEST_MODE: "true = stop right before the booking POST (dry run)",
-  POLL_BASE_SECONDS: "seconds between polls before jitter (min 60; default 180)",
-  POLL_JITTER_SECONDS: "random 0..N seconds added to each delay (default 120)",
+  POLL_BASE_SECONDS: "seconds between 7-post polling cycles, before jitter (min 60; default 180)",
+  POLL_JITTER_SECONDS: "random 0..N seconds added to each cycle delay (default 120)",
   NIGHT_MULTIPLIER: "delay multiplier 01:00–06:00; 1 = same speed all night",
   DAILY_RUNAWAY_GUARD: "hard stop after this many requests/day (bug guard)",
   DASHBOARD_PORT: "port for this dashboard (restart dashboard agent to apply)",
@@ -168,13 +168,13 @@ async function refreshOverview() {
   $("#pBudget").textContent = `budget ${o.budget.used}/${o.budget.limit} today`;
   $("#pWindow").textContent = `window ${o.window[0]} → ${o.window[1]}`;
   const c = o.cadence;
-  $("#pCadence").textContent = `every ${c.base}–${c.base + c.jitter}s` +
+  $("#pCadence").textContent = `all 7 posts every ${c.base}–${c.base + c.jitter}s` +
     (c.night_multiplier > 1 ? ` (×${c.night_multiplier} at night)` : " (24/7)");
   $("#pLast").textContent = "last poll: " + (o.last_poll ? o.last_poll.replace("T", " ") : "—");
   const ex = $("#pExtra");
   if (o.booked) { ex.hidden = false; ex.textContent = "✓ BOOKED"; ex.className = "pill good"; }
   else if (o.backoff_until) { ex.hidden = false; ex.className = "pill bad";
-    ex.textContent = `backing off until ${o.backoff_until.replace("T", " ")} (ban streak ${o.ban_streak})`; }
+    ex.textContent = `backing off until ${o.backoff_until.replace("T", " ")}`; }
   else ex.hidden = true;
 
   $("#postCards").innerHTML = o.latest.map((x) => `

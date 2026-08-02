@@ -1,4 +1,4 @@
-"""Duty-cycle polling loop with soft-ban budget discipline and burst booking."""
+"""Duty-cycle polling loop with budget discipline and burst booking."""
 import json
 import logging
 import random
@@ -35,33 +35,26 @@ def check_post(client: AisClient, store: Store, post: str) -> list:
     """One days.json read for one consulate. Records history, returns parsed dates."""
     dates = detector.parse_days(client.get_days(config.FACILITIES[post]))
     store.record_availability({post: min(dates) if dates else None})
-    store.record_date_count(post, len(dates))
     store.kv_set("last_poll_ts", datetime.now().isoformat(timespec="seconds"))
     log.info("%s: %d dates%s", post, len(dates),
              f", earliest {min(dates)}" if dates else " (nothing available)")
     return dates
 
 
-class SoftBanned(Exception):
-    """A canary consulate came back empty — AIS has silently rate-limited us."""
-
-
 def poll_once(client: AisClient, store: Store) -> None:
-    """One rotation step: check the next consulate in the round-robin."""
+    """One cycle: check every consulate back-to-back, in POST_PRIORITY order so
+    the DS-160 post gets first look. Bursts the moment a date is in window —
+    slots vanish in minutes, so booking beats finishing the scan."""
     client.ensure_session()
-    post = detector.next_post(store)
-    dates = check_post(client, store, post)
-
-    if detector.ban_suspected(store, post, len(dates)):
-        raise SoftBanned(f"{post} returned 0 dates but has shown up to "
-                         f"{store.peak_dates(post)} — soft-ban")
-    if dates:
-        # Anything flowing means we are definitely not banned.
-        store.set_ban_streak(0)
-
-    cand = detector.earliest_in_window(dates)
-    if cand:
-        run_burst(client, store, post, cand)
+    for i, post in enumerate(config.POST_PRIORITY):
+        if i:
+            _pace()
+        dates = check_post(client, store, post)
+        cand = detector.earliest_in_window(dates)
+        if cand:
+            run_burst(client, store, post, cand)
+            if store.booked():
+                return
 
 
 def sweep(client: AisClient, store: Store) -> dict:
@@ -186,24 +179,6 @@ def run_loop(store: Store) -> None:
             poll_once(client, store)
             maintenance_streak = 0
             login_fail_streak = 0
-        except SoftBanned as exc:
-            # AIS bans on cumulative request count, per ACCOUNT — a new session or
-            # a different IP does not clear it, only time does. Back off, then probe;
-            # the streak resets as soon as any consulate returns dates again.
-            streak = store.ban_streak() + 1
-            store.set_ban_streak(streak)
-            ladder = config.BAN_BACKOFF_LADDER
-            wait = ladder[min(streak - 1, len(ladder) - 1)]
-            store.event("warn", "softban", f"{exc} (streak {streak}, waiting {wait // 60}m)")
-            store.set_backoff(datetime.now() + timedelta(seconds=wait),
-                              f"soft-ban #{streak}")
-            notifier.send_alert(
-                store, f"Soft-banned by AIS — pausing {wait // 60} min",
-                f"{exc}\n\nThis is AIS's silent rate limit: it answers with HTTP 200 and "
-                "an empty list. It is keyed to the account and typically lifts in about "
-                "5 hours, though often sooner.\n"
-                f"Consecutive bans: {streak}. The bot will probe again in {wait // 60} "
-                "minutes and resume full speed as soon as dates flow.")
         except CaptchaDetected as exc:
             store.event("error", "captcha", str(exc))
             store.set_backoff(datetime.now() + timedelta(hours=12), "captcha")

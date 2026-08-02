@@ -3,7 +3,6 @@ from datetime import date
 import pytest
 
 from visabot import config, detector
-from visabot.store import Store
 
 
 @pytest.fixture(autouse=True)
@@ -37,18 +36,3 @@ def test_earliest_in_window_respects_rolling_start():
     assert detector.earliest_in_window(dates, date(2026, 8, 8)) is None
 
 
-def test_rotation_cycles_all_posts_then_wraps(tmp_path):
-    s = Store(tmp_path / "rot.db")
-    seen = [detector.next_post(s) for _ in range(len(config.ROTATION))]
-    assert seen == config.ROTATION          # every post covered exactly once
-    assert detector.next_post(s) == config.ROTATION[0]   # wraps around
-
-
-def test_rotation_survives_restart(tmp_path):
-    db = tmp_path / "rot2.db"
-    s1 = Store(db)
-    detector.next_post(s1)
-    first_after = detector.next_post(s1)
-    s2 = Store(db)  # simulate a restart
-    assert detector.next_post(s2) == config.ROTATION[2]
-    assert first_after == config.ROTATION[1]

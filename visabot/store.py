@@ -72,26 +72,6 @@ class Store:
     def budget_remaining(self) -> int:
         return max(0, config.DAILY_RUNAWAY_GUARD - self.requests_today())
 
-    def record_date_count(self, post: str, n: int) -> None:
-        """Remember the most dates a post has ever shown, so it can act as a canary."""
-        if n > self.peak_dates(post):
-            self.kv_set(f"peak_dates_{post}", str(n))
-
-    def peak_dates(self, post: str) -> int:
-        try:
-            return int(self.kv_get(f"peak_dates_{post}", "0"))
-        except (TypeError, ValueError):
-            return 0
-
-    def ban_streak(self) -> int:
-        try:
-            return int(self.kv_get("ban_streak", "0"))
-        except (TypeError, ValueError):
-            return 0
-
-    def set_ban_streak(self, n: int) -> None:
-        self.kv_set("ban_streak", str(n))
-
     # --- availability history ---
 
     def record_availability(self, avail: dict) -> None:

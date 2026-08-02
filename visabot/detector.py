@@ -29,29 +29,3 @@ def earliest_in_window(dates: list[date], today: date | None = None) -> date | N
     return min(usable) if usable else None
 
 
-def next_post(store) -> str:
-    """Round-robin over config.ROTATION, persisted across restarts."""
-    order = config.ROTATION
-    try:
-        idx = int(store.kv_get("rotation_index", "0"))
-    except ValueError:
-        idx = 0
-    post = order[idx % len(order)]
-    store.kv_set("rotation_index", str((idx + 1) % len(order)))
-    return post
-
-
-def is_canary(store, post: str) -> bool:
-    """True if this post has held enough dates that an empty reply is suspicious."""
-    return store.peak_dates(post) >= config.CANARY_MIN_DATES
-
-
-def ban_suspected(store, post: str, n_dates: int) -> bool:
-    """A well-populated consulate returning nothing means we are soft-banned.
-
-    AIS answers a soft-ban with HTTP 200 and an empty array — byte-identical to
-    genuine emptiness. The tell is *which* post went empty: Vancouver holding 139
-    open days cannot organically drop to zero between two polls, whereas Calgary
-    is empty all the time.
-    """
-    return n_dates == 0 and is_canary(store, post)

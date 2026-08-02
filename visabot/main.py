@@ -60,7 +60,8 @@ def main() -> int:
     p = argparse.ArgumentParser(prog="visabot")
     g = p.add_mutually_exclusive_group(required=True)
     g.add_argument("--poll", action="store_true", help="run the polling daemon (launchd entry)")
-    g.add_argument("--once", action="store_true", help="one rotation step (1 consulate), then exit")
+    g.add_argument("--once", action="store_true",
+                   help="one full polling cycle (all 7 consulates), then exit")
     g.add_argument("--sweep", action="store_true",
                    help="check all 7 consulates once and print earliest dates (7 requests)")
     g.add_argument("--recon", action="store_true", help="read-only site walk, saves snapshots")
