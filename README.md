@@ -50,6 +50,39 @@ detection — when the site says stop, it stops.
 TCC blocks launchd background agents from reading those folders — the process hangs
 during Python startup with no error anywhere. That's why it lives in `~/visabot`.
 
+## Deploying to the Mac mini
+
+Run these **on the mini**. Nothing secret is in the repo — `.env` is gitignored — so
+you enter credentials once, there.
+
+```bash
+git clone https://github.com/shawnzxiang/visabot.git ~/visabot && cd ~/visabot && ./setup.sh
+```
+
+`setup.sh` finds a Python 3.10+, builds the venv, generates launchd plists for the
+mini's own paths, and **refuses to install** inside `~/Documents`/`~/Desktop`/`~/Downloads`
+(see the TCC warning below). Then:
+
+```bash
+nano ~/visabot/.env      # AIS_EMAIL, AIS_PASSWORD, PUSHOVER_USER_KEY, PUSHOVER_APP_TOKEN
+```
+
+Verify, then start it:
+
+```bash
+cd ~/visabot && .venv/bin/python -m visabot.main --test-notify && .venv/bin/python -m visabot.main --sweep && ./setup.sh --load
+```
+
+**Run exactly one poller at a time.** AIS's rate limit is per *account*, not per
+machine, so two pollers double the request rate and roughly halve the time to a
+soft-ban — and both could race to book the same slot. Stop one with
+`launchctl bootout gui/$(id -u)/com.shawn.visabot.poller`.
+
+Make sure the mini never sleeps: **System Settings → Energy → Prevent automatic
+sleeping when the display is off**, or `sudo pmset -c sleep 0`.
+
+To pick up later changes: `cd ~/visabot && git pull && ./setup.sh --load`.
+
 ## One-time setup
 
 1. **Pushover** (~5 min, no 2FA anywhere):
