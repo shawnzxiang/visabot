@@ -17,6 +17,7 @@ import os
 import re
 import sqlite3
 import subprocess
+from contextlib import closing
 from datetime import date, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -164,7 +165,9 @@ def overview() -> dict:
         conn = _db()
     except sqlite3.OperationalError:
         return o
-    with conn:
+    # NB: sqlite's own context manager does NOT close the connection — without
+    # closing() every request leaks an fd until the process hits EMFILE.
+    with closing(conn):
         midnight = date.today().isoformat() + "T00:00:00"
         o["budget"]["used"] = conn.execute(
             "SELECT COUNT(*) FROM requests WHERE ts >= ?", (midnight,)).fetchone()[0]
@@ -204,20 +207,22 @@ def history(hours: int, post: str | None) -> list:
         args.append(post)
     q += " ORDER BY ts DESC LIMIT 2000"
     try:
-        with _db() as conn:
+        with closing(_db()) as conn:
             return [list(r) for r in conn.execute(q, args).fetchall()]
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        log.warning("history query failed: %s", e)
         return []
 
 
 def events(hours: int) -> list:
     since = (datetime.now() - timedelta(hours=hours)).isoformat(timespec="seconds")
     try:
-        with _db() as conn:
+        with closing(_db()) as conn:
             return [list(r) for r in conn.execute(
                 "SELECT ts, level, code, msg FROM events WHERE ts >= ? "
                 "ORDER BY ts DESC LIMIT 500", (since,)).fetchall()]
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as e:
+        log.warning("events query failed: %s", e)
         return []
 
 

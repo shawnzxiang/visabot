@@ -74,12 +74,23 @@ def test_poll_cadence_is_minutes_not_hours():
     assert 24 * 3600 / (sum(delays) / len(delays)) > 100
 
 
-def test_night_is_slower_but_still_polling():
+def test_night_is_slower_but_still_polling(monkeypatch):
+    # Pin the multiplier: with the operator's NIGHT_MULTIPLIER=1 night == day
+    # and the comparison below becomes a coin flip.
+    monkeypatch.setattr(config, "NIGHT_MULTIPLIER", 2.0)
     night = datetime(2026, 8, 1, 3, 0)
     day = datetime(2026, 8, 1, 14, 0)
     assert (sum(scheduler.next_delay_seconds(night) for _ in range(50))
             > sum(scheduler.next_delay_seconds(day) for _ in range(50)))
     assert scheduler.next_delay_seconds(night) < 3600   # never idles an hour
+
+
+def test_night_multiplier_one_means_no_easing(monkeypatch):
+    monkeypatch.setattr(config, "NIGHT_MULTIPLIER", 1.0)
+    night = datetime(2026, 8, 1, 3, 0)
+    hi = config.POLL_BASE_SECONDS + config.POLL_JITTER_SECONDS
+    for _ in range(50):
+        assert config.POLL_BASE_SECONDS <= scheduler.next_delay_seconds(night) <= hi
 
 
 def test_rotation_covers_every_consulate():
