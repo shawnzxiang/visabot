@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 from contextlib import closing
@@ -29,8 +30,16 @@ log = logging.getLogger(__name__)
 
 ENV_PATH = config.BOT_DIR / ".env"
 HTML_PATH = Path(__file__).parent / "static" / "dashboard.html"
-POLLER_LABEL = "com.shawn.visabot.poller"
 MASK = "••••••••"
+
+AGENTS = {
+    "poller": "com.shawn.visabot.poller",
+    "digest": "com.shawn.visabot.digest",
+    "dashboard": "com.shawn.visabot.dashboard",
+}
+# The dashboard can't stop itself — it would take the controls down with it.
+CONTROLLABLE = ("poller", "digest")
+LAUNCH_AGENTS_DIR = Path.home() / "Library" / "LaunchAgents"
 
 # Order defines the config form layout. Any extra keys found in .env are
 # appended so nothing becomes uneditable.
@@ -149,7 +158,7 @@ def overview() -> dict:
     lo = (date.today() + timedelta(days=offset)).isoformat()
     o = {
         "now": datetime.now().isoformat(timespec="seconds"),
-        "poller": poller_status(),
+        "agents": {n: agent_status(n) for n in AGENTS},
         "test_mode": env.get("TEST_MODE", "true").lower() not in ("false", "0", "no"),
         "window": [lo, latest],
         "cadence": {
@@ -222,29 +231,57 @@ def events(hours: int) -> list:
         return []
 
 
-# --- poller control ---
+# --- launchd agent control ---
 
-def poller_status() -> dict:
+def _launchctl(*args) -> tuple[bool, str]:
+    """-> (ok, full output). Callers that surface the output to the UI
+    truncate it themselves; agent_status needs it whole to find the pid."""
     try:
-        r = subprocess.run(
-            ["/bin/launchctl", "print", f"gui/{os.getuid()}/{POLLER_LABEL}"],
-            capture_output=True, text=True, timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
+        r = subprocess.run(["/bin/launchctl", *args],
+                           capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return False, str(e)
+    return r.returncode == 0, (r.stderr.strip() or r.stdout.strip() or "ok")
+
+
+def agent_status(name: str) -> dict:
+    ok, out = _launchctl("print", f"gui/{os.getuid()}/{AGENTS[name]}")
+    if not ok:
         return {"loaded": False, "running": False, "pid": None}
-    if r.returncode != 0:
-        return {"loaded": False, "running": False, "pid": None}
-    pid = re.search(r"pid = (\d+)", r.stdout)
+    pid = re.search(r"pid = (\d+)", out)
     return {"loaded": True, "running": bool(pid), "pid": int(pid.group(1)) if pid else None}
 
 
-def restart_poller() -> tuple[bool, str]:
-    try:
-        r = subprocess.run(
-            ["/bin/launchctl", "kickstart", "-k", f"gui/{os.getuid()}/{POLLER_LABEL}"],
-            capture_output=True, text=True, timeout=10)
-    except (OSError, subprocess.TimeoutExpired) as e:
-        return False, str(e)
-    return r.returncode == 0, (r.stderr.strip() or "ok")
+def agent_action(name: str, action: str) -> tuple[bool, str]:
+    """start / stop / restart a launchd agent.
+
+    stop = bootout AND remove the ~/Library/LaunchAgents plist, so the agent
+    stays stopped across logins; start copies the plist back and bootstraps.
+    """
+    label = AGENTS[name]
+    dom = f"gui/{os.getuid()}"
+    plist_src = config.BOT_DIR / "launchd" / f"{label}.plist"
+    plist_dst = LAUNCH_AGENTS_DIR / f"{label}.plist"
+
+    if action == "stop":
+        _launchctl("bootout", f"{dom}/{label}")   # fails harmlessly if not loaded
+        try:
+            plist_dst.unlink(missing_ok=True)
+        except OSError as e:
+            return False, f"unloaded, but could not remove plist: {e}"
+        return True, "stopped — stays stopped across logins"
+    if action in ("start", "restart"):
+        if action == "restart" and agent_status(name)["loaded"]:
+            ok, detail = _launchctl("kickstart", "-k", f"{dom}/{label}")
+            return ok, ("restarted" if ok else detail[:200])
+        if not plist_src.exists():
+            return False, "no plist generated yet — run ./setup.sh first"
+        LAUNCH_AGENTS_DIR.mkdir(parents=True, exist_ok=True)
+        shutil.copy(plist_src, plist_dst)
+        _launchctl("bootout", f"{dom}/{label}")   # clear any stale registration
+        ok, detail = _launchctl("bootstrap", dom, str(plist_dst))
+        return ok, ("started" if ok else detail[:200])
+    return False, f"unknown action {action!r}"
 
 
 # --- HTTP ---
@@ -331,12 +368,23 @@ class Handler(BaseHTTPRequestHandler):
                 write_env(updates)
                 restarted, detail = (False, "not requested")
                 if body.get("restart", True):
-                    restarted, detail = restart_poller()
+                    # A deliberately-stopped poller must not be resurrected by a
+                    # config save — only bounce it if it is currently loaded.
+                    if agent_status("poller")["loaded"]:
+                        restarted, detail = agent_action("poller", "restart")
+                    else:
+                        detail = "poller is stopped — start it from the Agents panel"
                 self._json({"ok": True, "saved": sorted(updates),
                             "restarted": restarted, "detail": detail})
-            elif url.path == "/api/restart":
-                ok, detail = restart_poller()
-                self._json({"ok": ok, "detail": detail})
+            elif url.path == "/api/agent":
+                name, action = body.get("agent"), body.get("action")
+                if name not in CONTROLLABLE or action not in ("start", "stop", "restart"):
+                    self._json({"error": "agent must be poller|digest, "
+                                         "action start|stop|restart"}, 400)
+                    return
+                ok, detail = agent_action(name, action)
+                self._json({"ok": ok, "detail": detail,
+                            "status": agent_status(name)})
             else:
                 self._json({"error": "not found"}, 404)
         except json.JSONDecodeError:

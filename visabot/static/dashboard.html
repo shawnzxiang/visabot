@@ -91,6 +91,14 @@
           vertical-align: middle; margin-right: 5px; }
   #legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 12px;
             font-size: 12px; color: var(--muted); }
+  .agent { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center;
+           padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .agent:last-child { border-bottom: none; }
+  .agent .aname { font-weight: 600; }
+  .agent .astate { font-size: 13px; color: var(--muted); }
+  .agent .astate.on { color: var(--good); }
+  .agent .astate.off { color: var(--bad); }
+  .agent .abtns { display: flex; gap: 6px; }
   .savebar { display: flex; gap: 12px; align-items: center; margin-top: 14px; flex-wrap: wrap; }
   #saveMsg { font-size: 13px; color: var(--muted); }
   #saveMsg.good { color: var(--good); } #saveMsg.bad { color: var(--bad); }
@@ -109,7 +117,6 @@
   <span class="pill" id="pExtra" hidden></span>
   <span class="spacer"></span>
   <span class="pill" id="pLast">last poll: …</span>
-  <button id="restartBtn" title="launchctl kickstart -k the poller">Restart poller</button>
 </header>
 <main>
   <section>
@@ -148,6 +155,12 @@
       <thead><tr><th>time</th><th>level</th><th>code</th><th>detail</th></tr></thead>
       <tbody></tbody>
     </table></div>
+  </section>
+
+  <section>
+    <h2>Agents <span style="text-transform:none">(stop keeps an agent off across logins; start brings it back)</span></h2>
+    <div id="agents"></div>
+    <div id="agentMsg" style="margin-top:8px;font-size:13px;color:var(--muted)"></div>
   </section>
 
   <section>
@@ -190,11 +203,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
 // ---- overview ----
 async function refreshOverview() {
   const o = await api("/api/overview");
-  const p = o.poller;
+  const p = o.agents.poller;
   const pl = $("#pPoller");
   pl.textContent = p.running ? `poller: ● running (pid ${p.pid})`
-                 : p.loaded ? "poller: ○ loaded, not running" : "poller: ○ not loaded";
+                 : p.loaded ? "poller: ○ loaded, not running" : "poller: ○ stopped";
   pl.className = "pill " + (p.running ? "good" : "bad");
+  renderAgents(o.agents);
   const m = $("#pMode");
   m.textContent = o.test_mode ? "TEST MODE — will not book" : "LIVE — will book";
   m.className = "pill " + (o.test_mode ? "warn" : "good");
@@ -221,6 +235,63 @@ async function refreshOverview() {
   const sel = $("#histPost");
   if (sel.options.length === 1)
     for (const x of o.latest) sel.add(new Option(x.post));
+}
+
+// ---- agents panel ----
+const AGENT_DESC = {
+  poller: (s) => s.running ? `running (pid ${s.pid}) — watching for slots`
+               : s.loaded ? "loaded, between polls" : "stopped",
+  digest: (s) => s.loaded ? "scheduled — daily summary at 21:00" : "stopped",
+  dashboard: (s) => s.running ? `running (pid ${s.pid}) — serves this page` : "state unknown",
+};
+function renderAgents(agents) {
+  const box = $("#agents");
+  box.replaceChildren();
+  for (const [name, st] of Object.entries(agents)) {
+    const row = document.createElement("div");
+    row.className = "agent";
+    const nm = document.createElement("span");
+    nm.className = "aname"; nm.textContent = name;
+    const state = document.createElement("span");
+    const on = name === "digest" ? st.loaded : st.running;
+    state.className = "astate " + (on ? "on" : "off");
+    state.textContent = (on ? "● " : "○ ") + AGENT_DESC[name](st);
+    const btns = document.createElement("span");
+    btns.className = "abtns";
+    if (name !== "dashboard") {
+      for (const [label, action, enabled] of [
+        ["Start", "start", !st.loaded],
+        ["Stop", "stop", st.loaded],
+        ["Restart", "restart", st.loaded],
+      ]) {
+        const b = document.createElement("button");
+        b.textContent = label;
+        b.disabled = !enabled;
+        b.addEventListener("click", () => agentAct(name, action, b));
+        btns.append(b);
+      }
+    }
+    row.append(nm, state, btns);
+    box.append(row);
+  }
+}
+async function agentAct(name, action, btn) {
+  if (action === "stop" && !confirm(`Stop the ${name}?` +
+      (name === "poller" ? " The bot will stop watching for appointments." : "")))
+    return;
+  const msg = $("#agentMsg");
+  btn.disabled = true;
+  try {
+    const res = await api("/api/agent", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agent: name, action }) });
+    msg.textContent = `${name}: ${res.detail}`;
+    msg.style.color = res.ok ? "var(--good)" : "var(--bad)";
+  } catch (e) {
+    msg.textContent = `${name} ${action} failed: ` + ((e.data && e.data.error) || e.message);
+    msg.style.color = "var(--bad)";
+  }
+  setTimeout(refreshOverview, 800);
 }
 
 // ---- history & events ----
@@ -505,12 +576,6 @@ async function save() {
 $("#saveBtn").addEventListener("click", save);
 $("#histHours").addEventListener("change", refreshHistory);
 $("#histPost").addEventListener("change", refreshHistory);
-$("#restartBtn").addEventListener("click", async () => {
-  $("#restartBtn").disabled = true;
-  try { await api("/api/restart", { method: "POST", body: "{}" }); } finally {
-    setTimeout(async () => { $("#restartBtn").disabled = false; await refreshOverview(); }, 1500);
-  }
-});
 
 async function refreshAll() {
   try { await Promise.all([refreshOverview(), refreshHistory(), refreshEvents()]); }

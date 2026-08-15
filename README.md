@@ -151,6 +151,11 @@ sqlite3 state/bot.db 'SELECT * FROM events ORDER BY ts DESC LIMIT 20;'
 
 ## Control
 
+Easiest: the dashboard's **Agents** panel starts, stops, and restarts the poller
+and digest. Stop also removes the agent's plist from `~/Library/LaunchAgents`,
+so it stays stopped across logins; Start copies it back and bootstraps it.
+Terminal equivalents:
+
 ```bash
 launchctl print gui/$(id -u)/com.shawn.visabot.poller
 ```
